@@ -1,0 +1,240 @@
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #10131a;
+    color: #f5f5f5;
+}
+a {
+    color: #4cafef;
+}
+.container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+.site-header {
+    background: #0b0d12;
+    border-bottom: 1px solid #1f2530;
+    padding: 20px 0;
+}
+.site-header .logo a {
+    color: #fff;
+    text-decoration: none;
+}
+.site-header nav {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+.site-header nav a {
+    color: #cfd8dc;
+    text-decoration: none;
+    font-weight: 600;
+}
+.logout-form {
+    display: inline;
+}
+.logout-form button {
+    background: transparent;
+    border: 1px solid #4cafef;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: #4cafef;
+    cursor: pointer;
+}
+main.container {
+    padding: 30px 20px;
+}
+.card {
+    background: #1a1f2b;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+.site-footer {
+    background: #0b0d12;
+    border-top: 1px solid #1f2530;
+    padding: 20px 0;
+    text-align: center;
+}
+.flash {
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+.flash.success {
+    background: #1b5e20;
+}
+.flash.error {
+    background: #b71c1c;
+}
+form label {
+    display: block;
+    margin-bottom: 12px;
+}
+form input, form select, form textarea {
+    width: 100%;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #263238;
+    background: #141a24;
+    color: #fff;
+}
+form button {
+    padding: 12px 18px;
+    border-radius: 4px;
+    border: none;
+    background: #4cafef;
+    color: #000;
+    font-weight: bold;
+    cursor: pointer;
+}
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+.table th, .table td {
+    border: 1px solid #1f2530;
+    padding: 10px;
+    text-align: left;
+}
+.table th {
+    background: #1b2433;
+}
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+.admin-tabs {
+    display: flex;
+    gap: 10px;
+}
+.admin-tabs a {
+    padding: 8px 14px;
+    border-radius: 4px;
+    background: #1b2433;
+    color: #fff;
+    text-decoration: none;
+}
+.admin-tabs a.active {
+    background: #4cafef;
+    color: #000;
+}
+.inline {
+    display: inline-block;
+    margin-right: 10px;
+}
+.tournament-view {
+    margin-bottom: 30px;
+}
+.btn {
+    display: inline-block;
+    padding: 10px 16px;
+    background: #4cafef;
+    color: #000;
+    border-radius: 4px;
+    text-decoration: none;
+}
+.card .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-top: 10px;
+}
+.card .actions form {
+    margin: 0;
+}
+.tournament-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.tournament-list li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #101622;
+    border-radius: 6px;
+}
+.tournament-list .description {
+    margin-top: 6px;
+    color: #b8c4d4;
+}
+.tournament-list .type {
+    margin-left: 6px;
+    color: #4cafef;
+    font-size: 0.9rem;
+}
+.tournament-list .actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.tournament-list .actions form {
+    margin: 0;
+}
+.tournament-list .actions a {
+    color: #4cafef;
+}
+.match-group {
+    margin-bottom: 20px;
+    padding-top: 10px;
+    border-top: 1px solid #1b2433;
+}
+.match-group h4 {
+    margin-bottom: 10px;
+    font-size: 1rem;
+    text-transform: uppercase;
+    color: #4cafef;
+}
+.match-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    background: #101622;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+.match-row label {
+    display: flex;
+    flex-direction: column;
+    font-weight: 600;
+    color: #fff;
+}
+.match-row input[type="number"],
+.match-row select {
+    margin-top: 4px;
+}
+.match-players {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.versus {
+    font-weight: 700;
+    color: #4cafef;
+}
+.match-actions button[disabled],
+.match-row input[disabled],
+.match-row select[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.match-meta {
+    min-width: 80px;
+    font-weight: 600;
+    color: #bbb;
+}
+.muted {
+    color: #888;
+    font-size: 0.9rem;
+}
