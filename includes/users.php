@@ -53,8 +53,11 @@ function get_user_by_username(string $username): ?array
 
 function authenticate_user(string $usernameOrEmail, string $password): ?array
 {
-    $stmt = db()->prepare('SELECT * FROM users WHERE username = :value OR email = :value');
-    $stmt->execute([':value' => $usernameOrEmail]);
+    $stmt = db()->prepare('SELECT * FROM users WHERE username = :username OR email = :email');
+    $stmt->execute([
+        ':username' => $usernameOrEmail,
+        ':email' => $usernameOrEmail,
+    ]);
     $user = $stmt->fetch();
     if ($user && password_verify($password, $user['password_hash']) && (int)$user['is_active'] === 1) {
         return $user;

@@ -103,16 +103,30 @@ if ($step === 3) {
     if (empty($_SESSION['install']['admin_created'])) {
         redirect('/install/?step=2');
     }
+    if (!isset($_SESSION['install']['smtp'])) {
+        $_SESSION['install']['smtp'] = [
+            'host' => '',
+            'port' => 587,
+            'encryption' => '',
+            'username' => '',
+            'password' => '',
+            'from_name' => 'Play for Purpose Ohio',
+            'from_email' => '',
+        ];
+    }
+    $smtpState = $_SESSION['install']['smtp'];
     if (is_post()) {
         $smtp = [
-            'host' => trim($_POST['smtp_host'] ?? ''),
-            'port' => (int)($_POST['smtp_port'] ?? 587),
-            'encryption' => trim($_POST['smtp_encryption'] ?? ''),
-            'username' => trim($_POST['smtp_username'] ?? ''),
-            'password' => $_POST['smtp_password'] ?? '',
-            'from_name' => trim($_POST['smtp_from_name'] ?? ''),
-            'from_email' => trim($_POST['smtp_from_email'] ?? ''),
+            'host' => trim($_POST['smtp_host'] ?? $smtpState['host']),
+            'port' => (int)($_POST['smtp_port'] ?? $smtpState['port']),
+            'encryption' => trim($_POST['smtp_encryption'] ?? $smtpState['encryption']),
+            'username' => trim($_POST['smtp_username'] ?? $smtpState['username']),
+            'password' => $_POST['smtp_password'] ?? $smtpState['password'],
+            'from_name' => trim($_POST['smtp_from_name'] ?? $smtpState['from_name']),
+            'from_email' => trim($_POST['smtp_from_email'] ?? $smtpState['from_email']),
         ];
+        $_SESSION['install']['smtp'] = $smtp;
+        $smtpState = $smtp;
         $action = $_POST['action'] ?? 'save';
         if ($smtp['from_email'] === '' || !filter_var($smtp['from_email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'A valid from email is required.';
@@ -140,6 +154,7 @@ if ($step === 3) {
             ];
             save_config($config);
             create_install_lock();
+            unset($_SESSION['install']);
             flash('success', 'Installation complete. Please login.');
             redirect('/?page=login');
         }
@@ -220,28 +235,28 @@ if ($step === 3) {
         <?php elseif ($step === 3): ?>
             <form method="post">
                 <label>SMTP Host
-                    <input type="text" name="smtp_host" required>
+                    <input type="text" name="smtp_host" value="<?= sanitize($smtpState['host'] ?? '') ?>" required>
                 </label>
                 <label>SMTP Port
-                    <input type="number" name="smtp_port" value="587" required>
+                    <input type="number" name="smtp_port" value="<?= sanitize((string)($smtpState['port'] ?? 587)) ?>" required>
                 </label>
                 <label>Encryption (tls/ssl)
-                    <input type="text" name="smtp_encryption">
+                    <input type="text" name="smtp_encryption" value="<?= sanitize($smtpState['encryption'] ?? '') ?>">
                 </label>
                 <label>Username
-                    <input type="text" name="smtp_username">
+                    <input type="text" name="smtp_username" value="<?= sanitize($smtpState['username'] ?? '') ?>">
                 </label>
                 <label>Password
-                    <input type="password" name="smtp_password">
+                    <input type="password" name="smtp_password" value="<?= sanitize($smtpState['password'] ?? '') ?>">
                 </label>
                 <label>From Name
-                    <input type="text" name="smtp_from_name" value="Play for Purpose Ohio" required>
+                    <input type="text" name="smtp_from_name" value="<?= sanitize($smtpState['from_name'] ?? 'Play for Purpose Ohio') ?>" required>
                 </label>
                 <label>From Email
-                    <input type="email" name="smtp_from_email" required>
+                    <input type="email" name="smtp_from_email" value="<?= sanitize($smtpState['from_email'] ?? '') ?>" required>
                 </label>
                 <label>Test Recipient (optional)
-                    <input type="email" name="test_recipient" value="<?= sanitize($_SESSION['install']['admin_email'] ?? '') ?>">
+                    <input type="email" name="test_recipient" value="<?= sanitize($_POST['test_recipient'] ?? ($_SESSION['install']['admin_email'] ?? $smtpState['from_email'] ?? '')) ?>">
                 </label>
                 <div class="buttons">
                     <button type="submit" name="action" value="test">Send Test Email</button>
