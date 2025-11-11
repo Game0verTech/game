@@ -20,6 +20,7 @@ switch ($action) {
         require_role('admin', 'manager');
         break;
     case 'set_role':
+    case 'create_user':
         require_role('admin');
         break;
     default:
@@ -95,6 +96,52 @@ switch ($action) {
             redirect('/?page=admin&t=users');
         }
         flash('success', 'Role updated successfully.');
+        redirect('/?page=admin&t=users');
+
+    case 'create_user':
+        $username = trim($_POST['username'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $password = $_POST['password'] ?? '';
+        $confirm = $_POST['password_confirmation'] ?? '';
+        $role = $_POST['role'] ?? 'player';
+
+        if ($username === '' || $email === '' || $password === '' || $confirm === '') {
+            flash('error', 'All fields are required.');
+            redirect('/?page=admin&t=users');
+        }
+
+        if (!preg_match('/^[A-Za-z0-9_\-]{3,50}$/', $username)) {
+            flash('error', 'Username must be 3-50 characters and may include letters, numbers, dashes, and underscores.');
+            redirect('/?page=admin&t=users');
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            flash('error', 'Enter a valid email address.');
+            redirect('/?page=admin&t=users');
+        }
+
+        if ($password !== $confirm) {
+            flash('error', 'Passwords do not match.');
+            redirect('/?page=admin&t=users');
+        }
+
+        if (strlen($password) < 10) {
+            flash('error', 'Password must be at least 10 characters.');
+            redirect('/?page=admin&t=users');
+        }
+
+        if (!in_array($role, ['admin', 'manager', 'player'], true)) {
+            flash('error', 'Invalid role selection.');
+            redirect('/?page=admin&t=users');
+        }
+
+        if (get_user_by_username($username) || get_user_by_email($email)) {
+            flash('error', 'Username or email already exists.');
+            redirect('/?page=admin&t=users');
+        }
+
+        create_user($username, $email, $password, $role, true);
+        flash('success', 'User account created successfully.');
         redirect('/?page=admin&t=users');
 
     default:

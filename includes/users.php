@@ -2,8 +2,9 @@
 
 function create_user(string $username, string $email, string $password, string $role = 'player', bool $isActive = false): array
 {
-    $token = bin2hex(random_bytes(32));
-    $expires = (new DateTime('+1 day'))->format('Y-m-d H:i:s');
+    $generateVerification = !$isActive;
+    $token = $generateVerification ? bin2hex(random_bytes(32)) : null;
+    $expires = $generateVerification ? (new DateTime('+1 day'))->format('Y-m-d H:i:s') : null;
     $hash = password_hash($password, PASSWORD_DEFAULT);
 
     $sql = 'INSERT INTO users (username, email, password_hash, role, is_active, created_at, updated_at, email_verify_token, email_verify_expires)

@@ -90,6 +90,15 @@ form button {
     font-weight: bold;
     cursor: pointer;
 }
+.form-grid {
+    display: grid;
+    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    margin-bottom: 25px;
+}
+.form-grid button {
+    justify-self: start;
+}
 .table {
     width: 100%;
     border-collapse: collapse;

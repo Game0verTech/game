@@ -96,6 +96,31 @@ $config = load_config();
     <div class="card">
         <h2>User Management</h2>
         <p>Assign roles to manage access. Administrators can change any account except their own.</p>
+        <h3>Create User</h3>
+        <form method="post" action="/api/admin.php" class="form-grid">
+            <input type="hidden" name="action" value="create_user">
+            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+            <label>Username
+                <input type="text" name="username" maxlength="50" required>
+            </label>
+            <label>Email
+                <input type="email" name="email" maxlength="120" required>
+            </label>
+            <label>Password
+                <input type="password" name="password" minlength="10" required>
+            </label>
+            <label>Confirm Password
+                <input type="password" name="password_confirmation" minlength="10" required>
+            </label>
+            <label>Role
+                <select name="role">
+                    <option value="player">Player</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Administrator</option>
+                </select>
+            </label>
+            <button type="submit">Create User</button>
+        </form>
         <div class="table-responsive">
             <table class="data-table">
                 <thead>
