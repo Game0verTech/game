@@ -36,7 +36,7 @@ switch ($action) {
             flash('error', 'Username or email already registered.');
             redirect('/?page=register');
         }
-        $user = create_user($username, $email, $password, 'user', false);
+        $user = create_user($username, $email, $password, 'player', false);
         $token = $user['email_verify_token'];
         $link = site_url('/?page=verify&token=' . urlencode($token));
         $body = '<p>Hello ' . sanitize($username) . ',</p>';

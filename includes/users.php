@@ -1,6 +1,6 @@
 <?php
 
-function create_user(string $username, string $email, string $password, string $role = 'user', bool $isActive = false): array
+function create_user(string $username, string $email, string $password, string $role = 'player', bool $isActive = false): array
 {
     $token = bin2hex(random_bytes(32));
     $expires = (new DateTime('+1 day'))->format('Y-m-d H:i:s');
@@ -108,6 +108,22 @@ function logout_user(): void
 
 function all_users(): array
 {
-    $stmt = db()->query('SELECT id, username FROM users WHERE is_active = 1 ORDER BY username');
+    $stmt = db()->query('SELECT id, username, role FROM users WHERE is_active = 1 ORDER BY username');
     return $stmt->fetchAll();
+}
+
+function list_users(): array
+{
+    $stmt = db()->query('SELECT id, username, email, role, is_active, created_at, updated_at FROM users ORDER BY created_at DESC');
+    return $stmt->fetchAll();
+}
+
+function update_user_role(int $userId, string $role): void
+{
+    $allowed = ['admin', 'manager', 'player'];
+    if (!in_array($role, $allowed, true)) {
+        throw new InvalidArgumentException('Invalid role supplied');
+    }
+    $stmt = db()->prepare('UPDATE users SET role = :role, updated_at = NOW() WHERE id = :id');
+    $stmt->execute([':role' => $role, ':id' => $userId]);
 }

@@ -1,11 +1,7 @@
 <?php
 require_login();
+require_role('admin', 'manager');
 $user = current_user();
-if ($user['role'] !== 'admin') {
-    http_response_code(403);
-    echo 'Forbidden';
-    exit;
-}
 
 $pageTitle = 'Admin Dashboard';
 require __DIR__ . '/../templates/header.php';
@@ -17,6 +13,9 @@ $config = load_config();
     <nav class="admin-tabs">
         <a href="/?page=admin&t=dashboard" class="<?= $tab === 'dashboard' ? 'active' : '' ?>">Overview</a>
         <a href="/?page=admin&t=settings" class="<?= $tab === 'settings' ? 'active' : '' ?>">Settings</a>
+        <?php if (user_has_role('admin')): ?>
+            <a href="/?page=admin&t=users" class="<?= $tab === 'users' ? 'active' : '' ?>">Users</a>
+        <?php endif; ?>
         <a href="/?page=admin&t=manage" class="<?= $tab === 'manage' ? 'active' : '' ?>">Tournaments</a>
     </nav>
 </div>
@@ -33,47 +32,51 @@ $config = load_config();
 <?php elseif ($tab === 'settings'): ?>
     <div class="card">
         <h2>SMTP Settings</h2>
-        <form method="post" action="/api/admin.php">
-            <input type="hidden" name="action" value="update_smtp">
-            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-            <label>Host
-                <input type="text" name="smtp_host" value="<?= sanitize($config['smtp']['host'] ?? '') ?>" required>
-            </label>
-            <label>Port
-                <input type="number" name="smtp_port" value="<?= sanitize($config['smtp']['port'] ?? 587) ?>" required>
-            </label>
-            <label>Encryption
-                <input type="text" name="smtp_encryption" value="<?= sanitize($config['smtp']['encryption'] ?? '') ?>">
-            </label>
-            <label>Username
-                <input type="text" name="smtp_username" value="<?= sanitize($config['smtp']['username'] ?? '') ?>">
-            </label>
-            <label>Password
-                <input type="password" name="smtp_password" value="<?= sanitize($config['smtp']['password'] ?? '') ?>">
-            </label>
-            <label>From Name
-                <input type="text" name="smtp_from_name" value="<?= sanitize($config['smtp']['from_name'] ?? '') ?>" required>
-            </label>
-            <label>From Email
-                <input type="email" name="smtp_from_email" value="<?= sanitize($config['smtp']['from_email'] ?? '') ?>" required>
-            </label>
-            <button type="submit">Save</button>
-        </form>
-        <form method="post" action="/api/admin.php" class="inline">
-            <input type="hidden" name="action" value="test_smtp">
-            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-            <input type="hidden" name="smtp_host" value="<?= sanitize($config['smtp']['host'] ?? '') ?>">
-            <input type="hidden" name="smtp_port" value="<?= sanitize($config['smtp']['port'] ?? 587) ?>">
-            <input type="hidden" name="smtp_encryption" value="<?= sanitize($config['smtp']['encryption'] ?? '') ?>">
-            <input type="hidden" name="smtp_username" value="<?= sanitize($config['smtp']['username'] ?? '') ?>">
-            <input type="hidden" name="smtp_password" value="<?= sanitize($config['smtp']['password'] ?? '') ?>">
-            <input type="hidden" name="smtp_from_name" value="<?= sanitize($config['smtp']['from_name'] ?? '') ?>">
-            <input type="hidden" name="smtp_from_email" value="<?= sanitize($config['smtp']['from_email'] ?? '') ?>">
-            <label>Test Recipient
-                <input type="email" name="test_recipient" value="<?= sanitize($user['email']) ?>">
-            </label>
-            <button type="submit">Send Test Email</button>
-        </form>
+        <?php if (user_has_role('admin')): ?>
+            <form method="post" action="/api/admin.php">
+                <input type="hidden" name="action" value="update_smtp">
+                <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                <label>Host
+                    <input type="text" name="smtp_host" value="<?= sanitize($config['smtp']['host'] ?? '') ?>" required>
+                </label>
+                <label>Port
+                    <input type="number" name="smtp_port" value="<?= sanitize($config['smtp']['port'] ?? 587) ?>" required>
+                </label>
+                <label>Encryption
+                    <input type="text" name="smtp_encryption" value="<?= sanitize($config['smtp']['encryption'] ?? '') ?>">
+                </label>
+                <label>Username
+                    <input type="text" name="smtp_username" value="<?= sanitize($config['smtp']['username'] ?? '') ?>">
+                </label>
+                <label>Password
+                    <input type="password" name="smtp_password" value="<?= sanitize($config['smtp']['password'] ?? '') ?>">
+                </label>
+                <label>From Name
+                    <input type="text" name="smtp_from_name" value="<?= sanitize($config['smtp']['from_name'] ?? '') ?>" required>
+                </label>
+                <label>From Email
+                    <input type="email" name="smtp_from_email" value="<?= sanitize($config['smtp']['from_email'] ?? '') ?>" required>
+                </label>
+                <button type="submit">Save</button>
+            </form>
+            <form method="post" action="/api/admin.php" class="inline">
+                <input type="hidden" name="action" value="test_smtp">
+                <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                <input type="hidden" name="smtp_host" value="<?= sanitize($config['smtp']['host'] ?? '') ?>">
+                <input type="hidden" name="smtp_port" value="<?= sanitize($config['smtp']['port'] ?? 587) ?>">
+                <input type="hidden" name="smtp_encryption" value="<?= sanitize($config['smtp']['encryption'] ?? '') ?>">
+                <input type="hidden" name="smtp_username" value="<?= sanitize($config['smtp']['username'] ?? '') ?>">
+                <input type="hidden" name="smtp_password" value="<?= sanitize($config['smtp']['password'] ?? '') ?>">
+                <input type="hidden" name="smtp_from_name" value="<?= sanitize($config['smtp']['from_name'] ?? '') ?>">
+                <input type="hidden" name="smtp_from_email" value="<?= sanitize($config['smtp']['from_email'] ?? '') ?>">
+                <label>Test Recipient
+                    <input type="email" name="test_recipient" value="<?= sanitize($user['email']) ?>">
+                </label>
+                <button type="submit">Send Test Email</button>
+            </form>
+        <?php else: ?>
+            <p>Managers cannot modify SMTP settings. Contact an administrator for changes.</p>
+        <?php endif; ?>
     </div>
     <div class="card">
         <h2>Maintenance</h2>
@@ -87,6 +90,59 @@ $config = load_config();
             <input type="hidden" name="_token" value="<?= csrf_token() ?>">
             <button type="submit">Rebuild Player Stats</button>
         </form>
+    </div>
+<?php elseif ($tab === 'users' && user_has_role('admin')): ?>
+    <?php $users = list_users(); ?>
+    <div class="card">
+        <h2>User Management</h2>
+        <p>Assign roles to manage access. Administrators can change any account except their own.</p>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Role</th>
+                        <th>Created</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($users as $account): ?>
+                        <tr>
+                            <td><?= (int)$account['id'] ?></td>
+                            <td><?= sanitize($account['username']) ?></td>
+                            <td><?= sanitize($account['email']) ?></td>
+                            <td><?= (int)$account['is_active'] === 1 ? 'Active' : 'Pending' ?></td>
+                            <td><?= ucfirst($account['role']) ?></td>
+                            <td><?= sanitize(date('Y-m-d H:i', strtotime($account['created_at']))) ?></td>
+                            <td><?= sanitize(date('Y-m-d H:i', strtotime($account['updated_at']))) ?></td>
+                            <td>
+                                <?php if ($account['id'] !== $user['id']): ?>
+                                    <form method="post" action="/api/admin.php" class="inline">
+                                        <input type="hidden" name="action" value="set_role">
+                                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                        <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
+                                        <label class="sr-only" for="role-<?= (int)$account['id'] ?>">Role</label>
+                                        <select id="role-<?= (int)$account['id'] ?>" name="role">
+                                            <option value="admin" <?= $account['role'] === 'admin' ? 'selected' : '' ?>>Administrator</option>
+                                            <option value="manager" <?= $account['role'] === 'manager' ? 'selected' : '' ?>>Manager</option>
+                                            <option value="player" <?= $account['role'] === 'player' ? 'selected' : '' ?>>Player</option>
+                                        </select>
+                                        <button type="submit">Update</button>
+                                    </form>
+                                <?php else: ?>
+                                    <span class="muted">Cannot change own role</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 <?php elseif ($tab === 'manage'): ?>
     <?php $tournaments = list_tournaments(); ?>

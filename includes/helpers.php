@@ -28,6 +28,21 @@ function current_user(): ?array
     return $_SESSION['user'] ?? null;
 }
 
+function current_user_role(): ?string
+{
+    $user = current_user();
+    return $user['role'] ?? null;
+}
+
+function user_has_role(string ...$roles): bool
+{
+    $current = current_user_role();
+    if ($current === null) {
+        return false;
+    }
+    return in_array($current, $roles, true);
+}
+
 function require_login(): void
 {
     if (!current_user()) {
@@ -35,13 +50,18 @@ function require_login(): void
     }
 }
 
-function require_admin(): void
+function require_role(string ...$roles): void
 {
-    if (!current_user() || current_user()['role'] !== 'admin') {
+    if (!user_has_role(...$roles)) {
         http_response_code(403);
         echo 'Forbidden';
         exit;
     }
+}
+
+function require_admin(): void
+{
+    require_role('admin');
 }
 
 function flash(string $key, ?string $message = null)

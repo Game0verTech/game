@@ -6,9 +6,26 @@ if (!is_post()) {
     exit;
 }
 
-require_admin();
+require_login();
 require_csrf();
 $action = $_POST['action'] ?? '';
+
+switch ($action) {
+    case 'update_smtp':
+    case 'test_smtp':
+        require_role('admin');
+        break;
+    case 'bump_version':
+    case 'rebuild_stats':
+        require_role('admin', 'manager');
+        break;
+    case 'set_role':
+        require_role('admin');
+        break;
+    default:
+        require_role('admin', 'manager');
+        break;
+}
 
 switch ($action) {
     case 'update_smtp':
@@ -58,6 +75,27 @@ switch ($action) {
         rebuild_user_stats();
         flash('success', 'Player statistics rebuilt.');
         redirect('/?page=admin&t=settings');
+
+    case 'set_role':
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $role = $_POST['role'] ?? '';
+        $current = current_user();
+        if ($targetId === 0) {
+            flash('error', 'User not specified.');
+            redirect('/?page=admin&t=users');
+        }
+        if ($targetId === (int)$current['id']) {
+            flash('error', 'You cannot change your own role.');
+            redirect('/?page=admin&t=users');
+        }
+        try {
+            update_user_role($targetId, $role);
+        } catch (InvalidArgumentException $e) {
+            flash('error', 'Invalid role selection.');
+            redirect('/?page=admin&t=users');
+        }
+        flash('success', 'Role updated successfully.');
+        redirect('/?page=admin&t=users');
 
     default:
         http_response_code(400);

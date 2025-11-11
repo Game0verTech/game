@@ -40,7 +40,7 @@ switch ($action) {
         redirect('/?page=dashboard');
 
     case 'create':
-        require_admin();
+        require_role('admin', 'manager');
         $name = trim($_POST['name'] ?? '');
         $type = $_POST['type'] ?? '';
         $description = trim($_POST['description'] ?? '');
@@ -53,14 +53,14 @@ switch ($action) {
         redirect('/?page=admin&t=manage&id=' . $tournament['id']);
 
     case 'open':
-        require_admin();
+        require_role('admin', 'manager');
         $id = (int)($_POST['tournament_id'] ?? 0);
         update_tournament_status($id, 'open');
         flash('success', 'Tournament opened for registration.');
         redirect('/?page=admin&t=manage&id=' . $id);
 
     case 'start':
-        require_admin();
+        require_role('admin', 'manager');
         $id = (int)($_POST['tournament_id'] ?? 0);
         $structure = generate_bracket_structure($id);
         if (!$structure) {
@@ -79,14 +79,14 @@ switch ($action) {
         redirect('/?page=admin&t=manage&id=' . $id);
 
     case 'complete':
-        require_admin();
+        require_role('admin', 'manager');
         $id = (int)($_POST['tournament_id'] ?? 0);
         update_tournament_status($id, 'completed');
         flash('success', 'Tournament completed.');
         redirect('/?page=admin&t=manage&id=' . $id);
 
     case 'add_player_admin':
-        require_admin();
+        require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $userId = (int)($_POST['user_id'] ?? 0);
         add_player_to_tournament($tournamentId, $userId);
@@ -94,7 +94,7 @@ switch ($action) {
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
 
     case 'remove_player_admin':
-        require_admin();
+        require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $userId = (int)($_POST['user_id'] ?? 0);
         remove_player_from_tournament($tournamentId, $userId);
@@ -102,7 +102,7 @@ switch ($action) {
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
 
     case 'save_bracket':
-        require_admin();
+        require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $data = $_POST['bracket_json'] ?? '';
         json_decode($data, true);
@@ -116,7 +116,7 @@ switch ($action) {
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
 
     case 'save_group':
-        require_admin();
+        require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $data = $_POST['group_json'] ?? '';
         json_decode($data, true);
@@ -130,7 +130,7 @@ switch ($action) {
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
 
     case 'report_match':
-        require_admin();
+        require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $matchId = (int)($_POST['match_id'] ?? 0);
         $tournament = get_tournament($tournamentId);

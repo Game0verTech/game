@@ -27,7 +27,7 @@ $user = current_user();
             <a href="/?page=tournaments">Tournaments</a>
             <?php if ($user): ?>
                 <a href="/?page=dashboard">Dashboard</a>
-                <?php if ($user['role'] === 'admin'): ?>
+                <?php if (user_has_role('admin', 'manager')): ?>
                     <a href="/?page=admin">Admin</a>
                 <?php endif; ?>
                 <form method="post" action="/api/auth.php" class="logout-form">
