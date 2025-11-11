@@ -12,7 +12,7 @@ $upcoming = list_tournaments('open');
                 <li>
                     <strong><?= sanitize($tournament['name']) ?></strong>
                     (<?= sanitize(ucwords(str_replace('-', ' ', $tournament['type']))) ?>)
-                    <a href="/?page=tournaments">View details</a>
+                    <a href="/?page=tournament&id=<?= (int)$tournament['id'] ?>">View details</a>
                 </li>
             <?php endforeach; ?>
         </ul>

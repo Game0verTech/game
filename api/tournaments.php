@@ -19,8 +19,24 @@ switch ($action) {
             flash('error', 'Tournament is not open for registration.');
             redirect('/?page=tournaments');
         }
+        if (is_user_registered($tournamentId, $user['id'])) {
+            flash('error', 'You are already registered for this tournament.');
+            redirect('/?page=dashboard');
+        }
         add_player_to_tournament($tournamentId, $user['id']);
         flash('success', 'You have registered for ' . $tournament['name'] . '.');
+        redirect('/?page=dashboard');
+
+    case 'withdraw':
+        require_login();
+        $tournamentId = (int)($_POST['tournament_id'] ?? 0);
+        $tournament = get_tournament($tournamentId);
+        if (!$tournament || $tournament['status'] !== 'open') {
+            flash('error', 'Withdrawals are only allowed while registration is open.');
+            redirect('/?page=dashboard');
+        }
+        remove_player_from_tournament($tournamentId, $user['id']);
+        flash('success', 'You have been removed from ' . $tournament['name'] . '.');
         redirect('/?page=dashboard');
 
     case 'create':
@@ -117,6 +133,11 @@ switch ($action) {
         require_admin();
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $matchId = (int)($_POST['match_id'] ?? 0);
+        $tournament = get_tournament($tournamentId);
+        if (!$tournament || $tournament['status'] !== 'live') {
+            flash('error', 'Matches can only be updated while the tournament is live.');
+            redirect('/?page=admin&t=manage&id=' . $tournamentId);
+        }
         $score1 = (int)($_POST['score1'] ?? 0);
         $score2 = (int)($_POST['score2'] ?? 0);
         $winner = (int)($_POST['winner_user_id'] ?? 0) ?: null;

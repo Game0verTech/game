@@ -14,10 +14,12 @@ This project provides a PHP 8+ and MySQL 8+ powered tournament management platfo
 - **Admin Tools**
   - Manage SMTP configuration, send test emails, view system info, bump version, rebuild stats.
   - Create, open, start, and complete tournaments; manage entrants; edit brackets/groups.
+  - Live match center for recording scores and winners with automatic stat updates.
 - **Tournament Support**
   - Single and double elimination via [jQuery Bracket](assets/vendor/jquery-bracket).
   - Round-robin via [jQuery Group](assets/vendor/jquery-group).
   - Dynamic JSON-driven brackets/groups stored in MySQL and rendered client-side.
+  - Public tournament hubs with participant lists, bracket views, and join/withdraw workflows.
 - **Player Statistics**
   - Tracks tournaments played, wins, losses, win rate, and recent match history.
   - Script `scripts/rebuild_stats.php` rebuilds statistics from match data.

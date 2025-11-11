@@ -5,6 +5,7 @@ $page = $_GET['page'] ?? 'home';
 $allowedPages = [
     'home' => __DIR__ . '/pages/public/home.php',
     'tournaments' => __DIR__ . '/pages/public/tournaments.php',
+    'tournament' => __DIR__ . '/pages/public/tournament.php',
     'login' => __DIR__ . '/pages/user/login.php',
     'register' => __DIR__ . '/pages/user/register.php',
     'dashboard' => __DIR__ . '/pages/user/dashboard.php',

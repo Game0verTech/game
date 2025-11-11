@@ -52,6 +52,13 @@ function add_player_to_tournament(int $tournamentId, int $userId): bool
     return $stmt->execute([':tid' => $tournamentId, ':uid' => $userId]);
 }
 
+function is_user_registered(int $tournamentId, int $userId): bool
+{
+    $stmt = db()->prepare('SELECT 1 FROM tournament_players WHERE tournament_id = :tid AND user_id = :uid');
+    $stmt->execute([':tid' => $tournamentId, ':uid' => $userId]);
+    return (bool)$stmt->fetchColumn();
+}
+
 function remove_player_from_tournament(int $tournamentId, int $userId): void
 {
     $stmt = db()->prepare('DELETE FROM tournament_players WHERE tournament_id = :tid AND user_id = :uid');
@@ -175,7 +182,20 @@ function record_match_result(int $tournamentId, int $matchId, int $score1, int $
         ':id' => $matchId,
         ':tid' => $tournamentId,
     ]);
-    if ($winnerId) {
+    $match = db()->prepare('SELECT player1_user_id, player2_user_id FROM tournament_matches WHERE id = :id AND tournament_id = :tid');
+    $match->execute([':id' => $matchId, ':tid' => $tournamentId]);
+    $players = $match->fetch();
+    $updated = [];
+    if ($players) {
+        foreach (['player1_user_id', 'player2_user_id'] as $key) {
+            if (!empty($players[$key])) {
+                $userId = (int)$players[$key];
+                update_user_stat($userId);
+                $updated[] = $userId;
+            }
+        }
+    }
+    if ($winnerId && !in_array($winnerId, $updated, true)) {
         update_user_stat($winnerId);
     }
 }
@@ -189,4 +209,21 @@ function save_snapshot(int $tournamentId, string $type, array $payload, int $use
         ':payload' => json_encode($payload),
         ':uid' => $userId,
     ]);
+}
+
+function tournament_matches(int $tournamentId): array
+{
+    $sql = 'SELECT tm.*, 
+                   u1.username AS player1_name,
+                   u2.username AS player2_name,
+                   uw.username AS winner_name
+            FROM tournament_matches tm
+            LEFT JOIN users u1 ON tm.player1_user_id = u1.id
+            LEFT JOIN users u2 ON tm.player2_user_id = u2.id
+            LEFT JOIN users uw ON tm.winner_user_id = uw.id
+            WHERE tm.tournament_id = :tid
+            ORDER BY tm.stage, tm.round, tm.match_index';
+    $stmt = db()->prepare($sql);
+    $stmt->execute([':tid' => $tournamentId]);
+    return $stmt->fetchAll();
 }

@@ -7,6 +7,7 @@ require __DIR__ . '/../../templates/header.php';
 $myTournaments = user_tournaments($user['id']);
 $stats = get_user_stat($user['id']);
 $recent = recent_results($user['id']);
+$openTournaments = list_tournaments('open');
 ?>
 <div class="dashboard-grid">
     <div class="card">
@@ -34,6 +35,42 @@ $recent = recent_results($user['id']);
             <p>No matches recorded.</p>
         <?php endif; ?>
     </div>
+</div>
+<div class="card">
+    <h2>Open Tournaments</h2>
+    <?php if ($openTournaments): ?>
+        <ul class="tournament-list">
+            <?php foreach ($openTournaments as $tournament): ?>
+                <li>
+                    <div>
+                        <strong><?= sanitize($tournament['name']) ?></strong>
+                        <span class="type">(<?= sanitize(ucwords(str_replace('-', ' ', $tournament['type']))) ?>)</span>
+                        <p class="description"><?= nl2br(sanitize($tournament['description'] ?? '')) ?></p>
+                    </div>
+                    <div class="actions">
+                        <?php if (is_user_registered($tournament['id'], $user['id'])): ?>
+                            <form method="post" action="/api/tournaments.php">
+                                <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                <input type="hidden" name="action" value="withdraw">
+                                <input type="hidden" name="tournament_id" value="<?= (int)$tournament['id'] ?>">
+                                <button type="submit">Withdraw</button>
+                            </form>
+                        <?php else: ?>
+                            <form method="post" action="/api/tournaments.php">
+                                <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                <input type="hidden" name="action" value="register">
+                                <input type="hidden" name="tournament_id" value="<?= (int)$tournament['id'] ?>">
+                                <button type="submit">Join Tournament</button>
+                            </form>
+                        <?php endif; ?>
+                        <a href="/?page=tournament&id=<?= (int)$tournament['id'] ?>">View Details</a>
+                    </div>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php else: ?>
+        <p>No tournaments are open for registration right now.</p>
+    <?php endif; ?>
 </div>
 <div class="card">
     <h2>Your Tournaments</h2>
