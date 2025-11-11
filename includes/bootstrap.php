@@ -25,3 +25,7 @@ if (!env_config_exists() || !install_is_locked()) {
         exit;
     }
 }
+
+if (env_config_exists() && install_is_locked()) {
+    ensure_user_role_enum();
+}

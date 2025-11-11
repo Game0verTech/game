@@ -1,5 +1,26 @@
 <?php
 
+function ensure_user_role_enum(): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+
+    $stmt = db()->prepare("SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'");
+    $stmt->execute();
+    $columnType = strtolower((string)$stmt->fetchColumn());
+
+    $required = ["'admin'", "'manager'", "'player'"];
+    foreach ($required as $value) {
+        if (strpos($columnType, $value) === false) {
+            db()->exec("ALTER TABLE users MODIFY role ENUM('admin','manager','player') NOT NULL DEFAULT 'player'");
+            break;
+        }
+    }
+}
+
 function create_user(string $username, string $email, string $password, string $role = 'player', bool $isActive = false): array
 {
     $generateVerification = !$isActive;
