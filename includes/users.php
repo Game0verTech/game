@@ -128,3 +128,21 @@ function update_user_role(int $userId, string $role): void
     $stmt = db()->prepare('UPDATE users SET role = :role, updated_at = NOW() WHERE id = :id');
     $stmt->execute([':role' => $role, ':id' => $userId]);
 }
+
+function create_test_player(): array
+{
+    $suffix = 1;
+    $stmt = db()->query("SELECT username, email FROM users WHERE username REGEXP '^Player[0-9]+$' ORDER BY CAST(SUBSTRING(username, 7) AS UNSIGNED) DESC LIMIT 1");
+    $last = $stmt->fetch();
+    if ($last && preg_match('/^Player(\d+)$/', $last['username'], $matches)) {
+        $suffix = (int)$matches[1] + 1;
+    }
+
+    do {
+        $username = 'Player' . $suffix;
+        $email = 'player' . $suffix . '@example.com';
+        $suffix++;
+    } while (get_user_by_username($username) || get_user_by_email($email));
+
+    return create_user($username, $email, 'playinggame', 'player', true);
+}

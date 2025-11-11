@@ -121,6 +121,13 @@ $config = load_config();
             </label>
             <button type="submit">Create User</button>
         </form>
+        <h3>Generate Test Player</h3>
+        <form method="post" action="/api/admin.php" class="inline">
+            <input type="hidden" name="action" value="seed_test_player">
+            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+            <button type="submit">Add Test Player</button>
+        </form>
+        <p class="muted">Creates PlayerN accounts with email playerN@example.com and password <code>playinggame</code>.</p>
         <div class="table-responsive">
             <table class="data-table">
                 <thead>

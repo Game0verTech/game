@@ -21,6 +21,7 @@ switch ($action) {
         break;
     case 'set_role':
     case 'create_user':
+    case 'seed_test_player':
         require_role('admin');
         break;
     default:
@@ -142,6 +143,11 @@ switch ($action) {
 
         create_user($username, $email, $password, $role, true);
         flash('success', 'User account created successfully.');
+        redirect('/?page=admin&t=users');
+
+    case 'seed_test_player':
+        $player = create_test_player();
+        flash('success', 'Created test player ' . $player['username'] . ' with default password.');
         redirect('/?page=admin&t=users');
 
     default:
