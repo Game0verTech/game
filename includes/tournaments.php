@@ -419,12 +419,18 @@ function propagate_winner_to_next_match(int $tournamentId, array $match, ?int $w
 {
     if (!$winnerId) {
         $slotColumn = ((int)$match['match_index'] % 2 === 1) ? 'player1_user_id' : 'player2_user_id';
-        $stmt = db()->prepare("UPDATE tournament_matches SET {$slotColumn} = NULL WHERE tournament_id = :tid AND stage = :stage AND round = :round AND match_index = :index");
+        $nextRound = (int)$match['round'] + 1;
+        $nextIndex = (int)ceil(((int)$match['match_index']) / 2);
+        $sql = sprintf(
+            'UPDATE tournament_matches SET %s = NULL WHERE tournament_id = :tid AND stage = :stage AND round = :round AND match_index = :index',
+            $slotColumn
+        );
+        $stmt = db()->prepare($sql);
         $stmt->execute([
             ':tid' => $tournamentId,
             ':stage' => $match['stage'],
-            ':round' => (int)$match['round'] + 1,
-            ':index' => (int)ceil(((int)$match['match_index']) / 2),
+            ':round' => $nextRound,
+            ':index' => $nextIndex,
         ]);
         return;
     }
