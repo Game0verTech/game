@@ -307,78 +307,52 @@ $config = load_config();
             <?php else: ?>
                 <div class="card">
                     <h3>Bracket</h3>
-                    <form method="post" action="/api/tournaments.php">
-                        <input type="hidden" name="action" value="save_bracket">
-                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                        <input type="hidden" name="tournament_id" value="<?= (int)$current['id'] ?>">
-                        <input type="hidden" id="bracket_json" name="bracket_json" value='<?= sanitize($current['bracket_json'] ?? json_encode(generate_bracket_structure($current['id']))) ?>'>
-                        <div class="bracket-container" data-bracket='<?= sanitize($current['bracket_json'] ?? json_encode(generate_bracket_structure($current['id']))) ?>' data-mode="admin" data-target="bracket_json"></div>
-                        <button type="submit">Save Bracket</button>
-                    </form>
+                    <?php $bracketJson = $current['bracket_json'] ?? json_encode(generate_bracket_structure($current['id'])); ?>
+                    <p class="muted">Right-click a competitor to advance them. Changes are saved automatically.</p>
+                    <div
+                        class="bracket-container"
+                        data-bracket='<?= sanitize($bracketJson) ?>'
+                        data-mode="admin"
+                        data-token="<?= csrf_token() ?>"
+                        data-tournament-id="<?= (int)$current['id'] ?>"
+                        data-live="1"
+                    ></div>
                 </div>
             <?php endif; ?>
             <div class="card">
                 <h3>Match Center</h3>
                 <?php if ($matches): ?>
-                    <?php $currentStage = null; ?>
-                    <?php $currentRound = null; ?>
-                    <?php foreach ($matches as $match): ?>
-                        <?php $stageLabel = strtoupper($match['stage']); ?>
-                        <?php $roundNumber = (int)$match['round']; ?>
-                        <?php if ($stageLabel !== $currentStage || $roundNumber !== $currentRound): ?>
-                            <?php if ($currentStage !== null): ?>
-                                </div>
-                            <?php endif; ?>
-                            <div class="match-group">
-                                <h4><?= sanitize($stageLabel) ?> &middot; Round <?= $roundNumber ?></h4>
-                        <?php $currentStage = $stageLabel; ?>
-                        <?php $currentRound = $roundNumber; ?>
-                        <?php endif; ?>
-                        <form method="post" action="/api/tournaments.php" class="match-row">
-                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                            <input type="hidden" name="action" value="report_match">
-                            <input type="hidden" name="tournament_id" value="<?= (int)$current['id'] ?>">
-                            <input type="hidden" name="match_id" value="<?= (int)$match['id'] ?>">
-                            <div class="match-meta">
-                                <span>Match #<?= (int)$match['match_index'] ?></span>
-                            </div>
-                            <div class="match-players">
-                                <label>
-                                    <?= sanitize($match['player1_name'] ?? 'TBD') ?>
-                                    <input type="number" name="score1" value="<?= sanitize((string)($match['score1'] ?? '')) ?>" min="0" <?= $current['status'] !== 'live' ? 'disabled' : '' ?>>
-                                </label>
-                                <span class="versus">vs</span>
-                                <label>
-                                    <?= sanitize($match['player2_name'] ?? 'TBD') ?>
-                                    <input type="number" name="score2" value="<?= sanitize((string)($match['score2'] ?? '')) ?>" min="0" <?= $current['status'] !== 'live' ? 'disabled' : '' ?>>
-                                </label>
-                            </div>
-                            <div class="match-winner">
-                                <label>Winner
-                                    <select name="winner_user_id" <?= $current['status'] !== 'live' ? 'disabled' : '' ?>>
-                                        <option value="">--</option>
-                                        <?php if ($match['player1_user_id']): ?>
-                                            <option value="<?= (int)$match['player1_user_id'] ?>" <?= (int)($match['winner_user_id'] ?? 0) === (int)$match['player1_user_id'] ? 'selected' : '' ?>><?= sanitize($match['player1_name'] ?? 'Player 1') ?></option>
-                                        <?php endif; ?>
-                                        <?php if ($match['player2_user_id']): ?>
-                                            <option value="<?= (int)$match['player2_user_id'] ?>" <?= (int)($match['winner_user_id'] ?? 0) === (int)$match['player2_user_id'] ? 'selected' : '' ?>><?= sanitize($match['player2_name'] ?? 'Player 2') ?></option>
-                                        <?php endif; ?>
-                                    </select>
-                                </label>
-                            </div>
-                            <div class="match-actions">
-                                <button type="submit" <?= $current['status'] !== 'live' ? 'disabled' : '' ?>>Save</button>
-                            </div>
-                        </form>
-                    <?php endforeach; ?>
-                    <?php if ($currentStage !== null): ?>
-                        </div>
-                    <?php endif; ?>
+                    <p class="muted">This list updates automatically. Use the bracket to change winners.</p>
+                    <div class="table-responsive">
+                        <table class="data-table js-match-summary" data-tournament-id="<?= (int)$current['id'] ?>">
+                            <thead>
+                                <tr>
+                                    <th>Stage</th>
+                                    <th>Round</th>
+                                    <th>Match</th>
+                                    <th>Players</th>
+                                    <th>Winner</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($matches as $match): ?>
+                                    <tr data-match-id="<?= (int)$match['id'] ?>">
+                                        <td><?= sanitize(strtoupper($match['stage'])) ?></td>
+                                        <td><?= (int)$match['round'] ?></td>
+                                        <td>#<?= (int)$match['match_index'] ?></td>
+                                        <td>
+                                            <?= sanitize($match['player1_name'] ?? 'TBD') ?>
+                                            <span class="versus">vs</span>
+                                            <?= sanitize($match['player2_name'] ?? 'TBD') ?>
+                                        </td>
+                                        <td><?= sanitize($match['winner_name'] ?? 'TBD') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php else: ?>
                     <p>No matches seeded yet.</p>
-                <?php endif; ?>
-                <?php if ($current['status'] !== 'live'): ?>
-                    <p class="muted">Matches are editable while the tournament is live.</p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
