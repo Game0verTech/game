@@ -396,11 +396,34 @@ function assign_bracket_source(array &$layout, array $source, array $destination
     ];
 }
 
-function build_double_elimination_layout(int $slotCount): array
+function build_double_elimination_layout(int $slotCount, array $firstRoundPairs = []): array
 {
     $slotCount = max(2, next_power_of_two($slotCount));
     $winnersRounds = (int)max(1, round(log($slotCount, 2)));
-    $losersRounds = $winnersRounds > 1 ? 2 * ($winnersRounds - 1) : 0;
+    $losersRoundsOriginal = $winnersRounds > 1 ? 2 * ($winnersRounds - 1) : 0;
+
+    $firstRoundHasTwoPlayers = [];
+    $meaningfulFirstRoundLosers = 0;
+    foreach ($firstRoundPairs as $index => $pair) {
+        $player1Id = $pair['player1']['id'] ?? null;
+        $player2Id = $pair['player2']['id'] ?? null;
+        $hasBoth = $player1Id && $player2Id;
+        $firstRoundHasTwoPlayers[$index + 1] = $hasBoth;
+        if ($hasBoth) {
+            $meaningfulFirstRoundLosers++;
+        }
+    }
+
+    $skipInitialLosersRound = $losersRoundsOriginal > 0 && $meaningfulFirstRoundLosers <= 1;
+    $losersRoundOffset = $skipInitialLosersRound ? 1 : 0;
+    $losersRounds = max(0, $losersRoundsOriginal - $losersRoundOffset);
+    $maxEffectiveLosersRound = $losersRoundsOriginal;
+
+    $losersRoundMap = [];
+    for ($round = 1; $round <= $losersRounds; $round++) {
+        $effectiveRound = $round + $losersRoundOffset;
+        $losersRoundMap[$effectiveRound] = $round;
+    }
 
     $layout = [
         'winners' => [],
@@ -408,6 +431,9 @@ function build_double_elimination_layout(int $slotCount): array
         'finals' => [],
         'slot_count' => $slotCount,
         'losers_rounds' => $losersRounds,
+        'losers_round_offset' => $losersRoundOffset,
+        'losers_round_map' => $losersRoundMap,
+        'losers_rounds_effective' => $maxEffectiveLosersRound,
     ];
 
     for ($round = 1; $round <= $winnersRounds; $round++) {
@@ -436,8 +462,31 @@ function build_double_elimination_layout(int $slotCount): array
         }
     }
 
+    $resolveLosersRound = static function (array $map, int $effectiveRound): ?int {
+        return $map[$effectiveRound] ?? null;
+    };
+
+    $findPreviousEffectiveRound = static function (array $map, int $current): ?int {
+        for ($candidate = $current - 1; $candidate >= 1; $candidate--) {
+            if (isset($map[$candidate])) {
+                return $candidate;
+            }
+        }
+        return null;
+    };
+
+    $findNextEffectiveRound = static function (array $map, int $current, int $maxEffective): ?int {
+        for ($candidate = $current + 1; $candidate <= $maxEffective; $candidate++) {
+            if (isset($map[$candidate])) {
+                return $candidate;
+            }
+        }
+        return null;
+    };
+
     for ($round = 1; $round <= $losersRounds; $round++) {
-        $matchCount = double_elimination_loser_round_match_count($round, $slotCount);
+        $effectiveRound = $round + $losersRoundOffset;
+        $matchCount = double_elimination_loser_round_match_count($effectiveRound, $slotCount);
         $layout['losers'][$round] = [];
         for ($match = 1; $match <= $matchCount; $match++) {
             $node = [
@@ -445,24 +494,31 @@ function build_double_elimination_layout(int $slotCount): array
                 'round' => $round,
                 'match_index' => $match,
                 'sources' => [],
+                'effective_round' => $effectiveRound,
             ];
-            if ($round % 2 === 1 && $round > 1) {
-                $node['sources'][1] = [
-                    'stage' => 'losers',
-                    'round' => $round - 1,
-                    'match_index' => ($match * 2) - 1,
-                ];
-                $node['sources'][2] = [
-                    'stage' => 'losers',
-                    'round' => $round - 1,
-                    'match_index' => $match * 2,
-                ];
-            } elseif ($round % 2 === 0) {
-                $node['sources'][1] = [
-                    'stage' => 'losers',
-                    'round' => $round - 1,
-                    'match_index' => $match,
-                ];
+            $previousEffective = $findPreviousEffectiveRound($losersRoundMap, $effectiveRound);
+            if ($previousEffective !== null) {
+                $previousRound = $resolveLosersRound($losersRoundMap, $previousEffective);
+                if ($previousRound !== null) {
+                    if ($effectiveRound % 2 === 1 && $effectiveRound > 1) {
+                        $node['sources'][1] = [
+                            'stage' => 'losers',
+                            'round' => $previousRound,
+                            'match_index' => ($match * 2) - 1,
+                        ];
+                        $node['sources'][2] = [
+                            'stage' => 'losers',
+                            'round' => $previousRound,
+                            'match_index' => $match * 2,
+                        ];
+                    } elseif ($effectiveRound % 2 === 0) {
+                        $node['sources'][1] = [
+                            'stage' => 'losers',
+                            'round' => $previousRound,
+                            'match_index' => $match,
+                        ];
+                    }
+                }
             }
             $layout['losers'][$round][$match] = $node;
         }
@@ -477,6 +533,7 @@ function build_double_elimination_layout(int $slotCount): array
         ],
     ];
 
+    $maxEffectiveRound = $layout['losers_rounds_effective'] ?? $losersRoundsOriginal;
     foreach ($layout['winners'] as $round => &$roundMatches) {
         foreach ($roundMatches as $matchIndex => &$node) {
             if ($round < $winnersRounds) {
@@ -495,17 +552,33 @@ function build_double_elimination_layout(int $slotCount): array
                 ];
             }
 
-            if ($layout['losers_rounds'] > 0) {
+            if (!empty($layout['losers_rounds'])) {
+                $destRound = null;
+                $destMatch = null;
+                $slot = 2;
                 if ($round === 1) {
-                    $destRound = 1;
+                    $targetEffective = 1 + ($layout['losers_round_offset'] ?? 0);
+                    $destRound = $resolveLosersRound($layout['losers_round_map'] ?? [], $targetEffective);
                     $destMatch = (int)ceil($matchIndex / 2);
                     $slot = ($matchIndex % 2 === 1) ? 1 : 2;
+                    $hasTwoPlayers = $firstRoundHasTwoPlayers[$matchIndex] ?? true;
+                    if (!$hasTwoPlayers) {
+                        $destRound = null;
+                    } elseif (($layout['losers_round_offset'] ?? 0) > 0) {
+                        $slot = 1;
+                    }
                 } else {
-                    $destRound = min($layout['losers_rounds'], 2 * ($round - 1));
-                    $destMatch = $matchIndex;
-                    $slot = 2;
+                    $targetEffective = min($maxEffectiveRound, 2 * ($round - 1));
+                    while ($targetEffective >= 1 && !isset(($layout['losers_round_map'] ?? [])[$targetEffective])) {
+                        $targetEffective--;
+                    }
+                    if ($targetEffective >= 1) {
+                        $destRound = $resolveLosersRound($layout['losers_round_map'] ?? [], $targetEffective);
+                        $destMatch = $matchIndex;
+                        $slot = 2;
+                    }
                 }
-                if ($destRound >= 1) {
+                if ($destRound !== null && $destRound >= 1 && $destMatch !== null) {
                     $node['next_loser'] = [
                         'stage' => 'losers',
                         'round' => $destRound,
@@ -521,21 +594,26 @@ function build_double_elimination_layout(int $slotCount): array
 
     foreach ($layout['losers'] as $round => &$roundMatches) {
         foreach ($roundMatches as $matchIndex => &$node) {
-            if ($round < $layout['losers_rounds']) {
-                if ($round % 2 === 1) {
-                    $node['next_winner'] = [
-                        'stage' => 'losers',
-                        'round' => $round + 1,
-                        'match_index' => $matchIndex,
-                        'slot' => 1,
-                    ];
-                } else {
-                    $node['next_winner'] = [
-                        'stage' => 'losers',
-                        'round' => $round + 1,
-                        'match_index' => (int)ceil($matchIndex / 2),
-                        'slot' => ($matchIndex % 2 === 1) ? 1 : 2,
-                    ];
+            $effectiveRound = $node['effective_round'] ?? $round;
+            $nextEffective = $findNextEffectiveRound($layout['losers_round_map'] ?? [], $effectiveRound, $maxEffectiveRound);
+            if ($nextEffective !== null) {
+                $nextRound = $resolveLosersRound($layout['losers_round_map'] ?? [], $nextEffective);
+                if ($nextRound !== null) {
+                    if ($effectiveRound % 2 === 1) {
+                        $node['next_winner'] = [
+                            'stage' => 'losers',
+                            'round' => $nextRound,
+                            'match_index' => $matchIndex,
+                            'slot' => 1,
+                        ];
+                    } else {
+                        $node['next_winner'] = [
+                            'stage' => 'losers',
+                            'round' => $nextRound,
+                            'match_index' => (int)ceil($matchIndex / 2),
+                            'slot' => ($matchIndex % 2 === 1) ? 1 : 2,
+                        ];
+                    }
                 }
             } else {
                 $node['next_winner'] = [
@@ -569,6 +647,16 @@ function build_double_elimination_layout(int $slotCount): array
         }
     }
 
+    foreach ($layout['losers'] as $round => &$roundMatches) {
+        foreach ($roundMatches as $matchIndex => &$node) {
+            unset($node['effective_round']);
+        }
+        unset($node);
+    }
+    unset($roundMatches);
+
+    unset($layout['losers_round_map'], $layout['losers_round_offset'], $layout['losers_rounds_effective']);
+
     return $layout;
 }
 
@@ -577,7 +665,8 @@ function build_double_elimination_bracket(int $tournamentId): array
     $players = tournament_players($tournamentId);
     $playerCount = count($players);
     $slotCount = max(2, next_power_of_two(max(1, $playerCount)));
-    $layout = build_double_elimination_layout($slotCount);
+    $pairs = single_elimination_pairs($players);
+    $layout = build_double_elimination_layout($slotCount, $pairs);
 
     $matches = tournament_matches($tournamentId);
     $matchMap = [];
@@ -599,7 +688,6 @@ function build_double_elimination_bracket(int $tournamentId): array
             ];
         }
     } else {
-        $pairs = single_elimination_pairs($players);
         foreach ($pairs as $pair) {
             $teams[] = [
                 $pair['player1']['name'],
@@ -995,7 +1083,7 @@ function seed_double_elimination_matches(int $tournamentId, array $players): voi
 {
     $pairs = single_elimination_pairs($players);
     $slotCount = max(2, next_power_of_two(max(1, count($players))));
-    $layout = build_double_elimination_layout($slotCount);
+    $layout = build_double_elimination_layout($slotCount, $pairs);
 
     $pdo = db();
     $insert = $pdo->prepare('INSERT INTO tournament_matches (tournament_id, stage, round, match_index, player1_user_id, player2_user_id, meta) VALUES (:tid, :stage, :round, :index, :p1, :p2, :meta)');

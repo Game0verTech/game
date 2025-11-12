@@ -771,6 +771,13 @@ $(function () {
             if (!stage || Number.isNaN(round) || Number.isNaN(matchIndex)) {
                 return;
             }
+            var destinationMatch = team.closest('.bracket-match');
+            var destinationStage = destinationMatch && destinationMatch.length
+                ? destinationMatch.attr('data-stage')
+                : null;
+            if (destinationStage && stage && destinationStage !== stage && destinationStage !== 'finals') {
+                return;
+            }
             var selector =
                 '.bracket-match[data-stage="' + stage + '"][data-round="' + round + '"][data-match-number="' + matchIndex + '"]';
             var source = columns.find(selector);
