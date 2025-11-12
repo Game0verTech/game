@@ -38,12 +38,11 @@ function update_tournament_status(int $id, string $status): void
 
 function update_tournament_json(int $id, ?string $bracketJson, ?string $groupJson): void
 {
-    $stmt = db()->prepare('UPDATE tournaments SET bracket_json = :bracket, groups_json = :groupjson WHERE id = :id');
-    $stmt->execute([
-        ':bracket' => $bracketJson,
-        ':groupjson' => $groupJson,
-        ':id' => $id,
-    ]);
+    $stmt = db()->prepare('UPDATE tournaments SET bracket_json = ?, groups_json = ? WHERE id = ?');
+    $stmt->bindValue(1, $bracketJson, $bracketJson === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+    $stmt->bindValue(2, $groupJson, $groupJson === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+    $stmt->bindValue(3, $id, PDO::PARAM_INT);
+    $stmt->execute();
 }
 
 function add_player_to_tournament(int $tournamentId, int $userId): bool
