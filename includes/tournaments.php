@@ -356,14 +356,14 @@ function seed_matches_for_tournament(int $tournamentId): void
     }
 }
 
-function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): void
+function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): array
 {
     $pdo = db();
     $matchStmt = $pdo->prepare('SELECT * FROM tournament_matches WHERE id = :id AND tournament_id = :tid');
     $matchStmt->execute([':id' => $matchId, ':tid' => $tournamentId]);
     $match = $matchStmt->fetch();
     if (!$match) {
-        return;
+        throw new RuntimeException('Match not found.');
     }
 
     $score1 = null;
@@ -372,7 +372,7 @@ function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): v
         $isPlayer1 = (int)($match['player1_user_id'] ?? 0) === $winnerId;
         $isPlayer2 = (int)($match['player2_user_id'] ?? 0) === $winnerId;
         if (!$isPlayer1 && !$isPlayer2) {
-            return;
+            throw new RuntimeException('Selected winner is not part of this match.');
         }
         $score1 = $isPlayer1 ? 1 : 0;
         $score2 = $isPlayer2 ? 1 : 0;
@@ -390,8 +390,13 @@ function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): v
     propagate_winner_to_next_match($tournamentId, $match, $winnerId);
     refresh_player_stats_for_match($match, $winnerId);
     clear_following_results($tournamentId, $match['stage'], (int)$match['round'], (int)$match['match_index']);
-    update_tournament_json($tournamentId, json_encode(generate_bracket_structure($tournamentId)), null);
+
+    $bracket = generate_bracket_structure($tournamentId);
+    $bracketJson = safe_json_encode($bracket);
+    update_tournament_json($tournamentId, $bracketJson, null);
     touch_tournament($tournamentId);
+
+    return $bracket;
 }
 
 function refresh_player_stats_for_match(array $match, ?int $winnerId): void

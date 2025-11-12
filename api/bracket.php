@@ -25,10 +25,13 @@ if (!$tournament) {
 }
 
 $bracket = generate_bracket_structure($tournamentId);
-header('Content-Type: application/json');
-echo json_encode([
+$bracketJson = safe_json_encode($bracket);
+$payload = [
     'bracket' => $bracket,
-    'checksum' => sha1(json_encode($bracket)),
+    'checksum' => sha1($bracketJson),
     'updated_at' => $tournament['updated_at'],
     'status' => $tournament['status'],
-]);
+];
+
+header('Content-Type: application/json');
+echo safe_json_encode($payload);

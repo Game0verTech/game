@@ -923,8 +923,13 @@ $(function () {
             })
             .fail(function (xhr) {
                 var message = 'Unable to update match.';
-                if (xhr.responseJSON && xhr.responseJSON.error) {
-                    message = xhr.responseJSON.error;
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.error) {
+                        message = xhr.responseJSON.error;
+                    }
+                    if (xhr.responseJSON.detail) {
+                        message += '\n' + xhr.responseJSON.detail;
+                    }
                 } else if (xhr.responseText) {
                     message = xhr.responseText;
                 }
