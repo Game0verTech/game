@@ -486,7 +486,7 @@ button.danger:hover,
 }
 
 .bracket-match .team .score.is-hidden {
-    color: transparent;
+    visibility: hidden;
 }
 
 .bracket-match .team .champion-icon {
@@ -494,8 +494,15 @@ button.danger:hover,
     align-items: center;
     justify-content: center;
     margin-left: 8px;
-    font-size: 1.05rem;
-    text-shadow: 0 0 6px rgba(255, 215, 0, 0.55);
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #ffd952;
+    font-size: 0.95rem;
+    font-weight: 700;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 215, 0, 0.65);
+    border: 1px solid rgba(255, 215, 0, 0.65);
 }
 
 .bracket-match .team.is-champion .label {

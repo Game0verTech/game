@@ -28,6 +28,16 @@ $(function () {
         return $('<div/>').text(value || '').html();
     }
 
+    function normalizeMode(mode) {
+        if (!mode) {
+            return 'viewer';
+        }
+        if (mode === 'user') {
+            return 'viewer';
+        }
+        return mode;
+    }
+
     function clearTeamHighlight(container) {
         if (!container || !container.length) {
             return;
@@ -37,6 +47,33 @@ $(function () {
             previous.removeClass('is-context-target');
         }
         container.removeData('activeTeam');
+    }
+
+    function parseJsonString(raw) {
+        if (typeof raw !== 'string') {
+            return null;
+        }
+        var sanitized = raw.replace(/^[\uFEFF\u200B]+/, '').trim();
+        if (!sanitized) {
+            return null;
+        }
+        try {
+            return JSON.parse(sanitized);
+        } catch (error) {
+            var start = sanitized.indexOf('{');
+            var end = sanitized.lastIndexOf('}');
+            if (start !== -1 && end !== -1 && end > start) {
+                var snippet = sanitized.slice(start, end + 1);
+                try {
+                    return JSON.parse(snippet);
+                } catch (inner) {
+                    console.error('Failed to parse JSON payload', inner);
+                }
+            } else {
+                console.error('Failed to parse JSON payload', error);
+            }
+        }
+        return null;
     }
 
     function ensureContextMenu(container) {
@@ -415,20 +452,26 @@ $(function () {
         team.attr('data-slot', options.slotIndex + 1);
         var label = $('<span class="label"></span>').text(options.name || 'TBD');
         var score = $('<span class="score"></span>');
-        var displayScore = null;
-        if (options.score !== null && options.score !== undefined && options.score !== '') {
-            var numericScore = Number(options.score);
-            if (Number.isNaN(numericScore)) {
-                displayScore = options.score;
-            } else if (numericScore !== 0 && numericScore !== 1) {
-                displayScore = options.score;
+        var rawScore = options.score;
+        var normalizedScore = rawScore;
+        if (typeof normalizedScore === 'string') {
+            normalizedScore = normalizedScore.trim();
+        }
+        var shouldShowScore = false;
+        if (normalizedScore !== null && normalizedScore !== undefined && normalizedScore !== '') {
+            var numericScore = Number(normalizedScore);
+            if (Number.isNaN(numericScore) || (numericScore !== 0 && numericScore !== 1)) {
+                shouldShowScore = true;
             }
         }
-        if (displayScore !== null) {
-            score.text(displayScore);
+        if (shouldShowScore) {
+            score.text(String(normalizedScore));
+            score.removeClass('is-hidden');
+            score.removeAttr('aria-hidden');
         } else {
-            score.text('\u00a0');
+            score.text('');
             score.addClass('is-hidden');
+            score.attr('aria-hidden', 'true');
         }
         team.append(label, score);
 
@@ -749,6 +792,9 @@ $(function () {
 
     function renderBracket(container, data, mode) {
         hideContextMenu(container);
+        var effectiveMode = normalizeMode(mode);
+        container.data('mode', effectiveMode);
+        container.attr('data-mode', effectiveMode);
         if (!hasRenderableMatches(data)) {
             container.empty();
             return;
@@ -764,7 +810,7 @@ $(function () {
             );
             container.data('bracketState', serialized);
             container.data('bracketData', data);
-            if (mode === 'admin') {
+            if (effectiveMode === 'admin') {
                 updateMatchSummary(container, data);
             }
             return;
@@ -775,7 +821,7 @@ $(function () {
             );
             container.data('bracketState', serialized);
             container.data('bracketData', data);
-            if (mode === 'admin') {
+            if (effectiveMode === 'admin') {
                 updateMatchSummary(container, data);
             }
             return;
@@ -861,11 +907,11 @@ $(function () {
         container.data('bracketState', serialized);
         container.data('bracketData', data);
 
-        if (mode === 'admin') {
+        if (effectiveMode === 'admin') {
             updateMatchSummary(container, data);
         }
 
-        enableAdminControls(container, mode);
+        enableAdminControls(container, effectiveMode);
 
         window.requestAnimationFrame(function () {
             refreshBracketGeometry(container);
@@ -929,11 +975,28 @@ $(function () {
         container.data('poller', poller);
     }
 
+    function applyBracketPayload(container, payload, mode) {
+        if (!container || !container.length || !payload) {
+            return false;
+        }
+        var effectiveMode = normalizeMode(mode || container.data('mode'));
+        if (payload.status) {
+            container.data('status', payload.status);
+            container.attr('data-status', payload.status);
+        }
+        if (payload.bracket) {
+            renderBracket(container, payload.bracket, effectiveMode);
+            return true;
+        }
+        return false;
+    }
+
     function markWinner(container, tournamentId, matchId, playerId, token) {
         if (!token) {
             console.warn('Missing CSRF token for bracket update.');
             return;
         }
+        var mode = normalizeMode(container.data('mode') || 'admin');
         container.addClass('is-updating');
         $.ajax({
             method: 'POST',
@@ -948,11 +1011,26 @@ $(function () {
             },
         })
             .done(function (response) {
-                if (response && response.bracket) {
-                    renderBracket(container, response.bracket, 'admin');
+                if (!applyBracketPayload(container, response, mode)) {
+                    fetchBracket(container, tournamentId, mode);
                 }
             })
-            .fail(function (xhr) {
+            .fail(function (xhr, textStatus) {
+                if (textStatus === 'parsererror') {
+                    var parsed = parseJsonString(xhr.responseText);
+                    if (applyBracketPayload(container, parsed, mode)) {
+                        return;
+                    }
+                }
+                if (xhr.status && xhr.status < 400) {
+                    console.warn('Bracket update request returned a non-JSON response.', {
+                        status: xhr.status,
+                        statusText: xhr.statusText,
+                        textStatus: textStatus,
+                    });
+                    fetchBracket(container, tournamentId, mode);
+                    return;
+                }
                 var message = 'Unable to update match.';
                 if (xhr.responseJSON) {
                     if (xhr.responseJSON.error) {
@@ -1015,7 +1093,7 @@ $(function () {
         if (!data) {
             return;
         }
-        var mode = container.data('mode') || 'viewer';
+        var mode = normalizeMode(container.data('mode') || 'viewer');
         renderBracket(container, data, mode);
         var tournamentId = container.data('tournamentId');
         setupPolling(container, tournamentId, mode);
