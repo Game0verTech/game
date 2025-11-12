@@ -198,7 +198,7 @@ $(function () {
     }
 
     function extractTeamPayload(container, team) {
-        if (!team || !team.length || !team.hasClass('is-selectable')) {
+        if (!team || !team.length) {
             return null;
         }
 
@@ -209,6 +209,14 @@ $(function () {
         var token = container.data('token');
 
         if (!matchId || !playerId || !tournamentId || !token) {
+            if (window.console && typeof window.console.warn === 'function') {
+                console.warn('Bracket winner selection unavailable due to missing data', {
+                    matchId: matchId,
+                    playerId: playerId,
+                    tournamentId: tournamentId,
+                    hasToken: !!token,
+                });
+            }
             return null;
         }
 
