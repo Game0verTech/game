@@ -308,13 +308,14 @@ $config = load_config();
                 <div class="card">
                     <h3>Bracket</h3>
                     <?php $bracketJson = $current['bracket_json'] ?? json_encode(generate_bracket_structure($current['id'])); ?>
-                    <p class="muted">Right-click a competitor to advance them. Changes are saved automatically.</p>
+                    <p class="muted">Click or right-click a competitor to advance them. You can also press Enter when a match is focused. Changes are saved automatically.</p>
                     <div
                         class="bracket-container"
                         data-bracket='<?= sanitize($bracketJson) ?>'
                         data-mode="admin"
                         data-token="<?= csrf_token() ?>"
                         data-tournament-id="<?= (int)$current['id'] ?>"
+                        data-status="<?= sanitize($current['status']) ?>"
                         data-live="1"
                     ></div>
                 </div>
