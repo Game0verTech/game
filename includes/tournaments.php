@@ -1,21 +1,79 @@
 <?php
 
+function default_tournament_location(): string
+{
+    return 'Kenton Moose Lodge Basement';
+}
+
+function ensure_tournament_schedule_columns(): bool
+{
+    static $ensured;
+
+    if ($ensured !== null) {
+        return $ensured;
+    }
+
+    try {
+        $pdo = db();
+        $statement = $pdo->query('SHOW COLUMNS FROM tournaments');
+        $columns = $statement ? $statement->fetchAll(PDO::FETCH_COLUMN) : [];
+        $hasScheduled = in_array('scheduled_at', $columns, true);
+        $hasLocation = in_array('location', $columns, true);
+
+        if (!$hasScheduled) {
+            $pdo->exec("ALTER TABLE tournaments ADD COLUMN scheduled_at DATETIME DEFAULT NULL AFTER status");
+        }
+
+        if (!$hasLocation) {
+            $pdo->exec("ALTER TABLE tournaments ADD COLUMN location VARCHAR(255) DEFAULT NULL AFTER scheduled_at");
+        }
+
+        if (!$hasScheduled || !$hasLocation) {
+            $statement = $pdo->query('SHOW COLUMNS FROM tournaments');
+            $columns = $statement ? $statement->fetchAll(PDO::FETCH_COLUMN) : [];
+            $hasScheduled = in_array('scheduled_at', $columns, true);
+            $hasLocation = in_array('location', $columns, true);
+        }
+
+        $ensured = $hasScheduled && $hasLocation;
+    } catch (Throwable $e) {
+        error_log('Failed to ensure tournament schedule columns: ' . $e->getMessage());
+        $ensured = false;
+    }
+
+    return $ensured;
+}
+
 function create_tournament(string $name, string $type, string $description, int $createdBy, ?string $scheduledAt = null, ?string $location = null): array
 {
-    $stmt = db()->prepare("INSERT INTO tournaments (name, type, description, status, scheduled_at, location, created_by) VALUES (:name, :type, :description, 'draft', :scheduled_at, :location, :created_by)");
-    $stmt->execute([
-        ':name' => $name,
-        ':type' => $type,
-        ':description' => $description,
-        ':scheduled_at' => $scheduledAt,
-        ':location' => $location,
-        ':created_by' => $createdBy,
-    ]);
+    $supportsSchedule = ensure_tournament_schedule_columns();
+
+    if ($supportsSchedule) {
+        $stmt = db()->prepare("INSERT INTO tournaments (name, type, description, status, scheduled_at, location, created_by) VALUES (:name, :type, :description, 'draft', :scheduled_at, :location, :created_by)");
+        $stmt->execute([
+            ':name' => $name,
+            ':type' => $type,
+            ':description' => $description,
+            ':scheduled_at' => $scheduledAt,
+            ':location' => $location,
+            ':created_by' => $createdBy,
+        ]);
+    } else {
+        $stmt = db()->prepare("INSERT INTO tournaments (name, type, description, status, created_by) VALUES (:name, :type, :description, 'draft', :created_by)");
+        $stmt->execute([
+            ':name' => $name,
+            ':type' => $type,
+            ':description' => $description,
+            ':created_by' => $createdBy,
+        ]);
+    }
+
     return get_tournament((int)db()->lastInsertId());
 }
 
 function get_tournament(int $id): ?array
 {
+    ensure_tournament_schedule_columns();
     $stmt = db()->prepare('SELECT * FROM tournaments WHERE id = :id');
     $stmt->execute([':id' => $id]);
     $tournament = $stmt->fetch() ?: null;
@@ -28,6 +86,7 @@ function get_tournament(int $id): ?array
 
 function list_tournaments(?string $status = null): array
 {
+    ensure_tournament_schedule_columns();
     if ($status) {
         $stmt = db()->prepare('SELECT * FROM tournaments WHERE status = :status ORDER BY created_at DESC');
         $stmt->execute([':status' => $status]);
@@ -122,6 +181,9 @@ function normalize_tournament_schedule_input(?string $date, ?string $time): ?str
 
 function update_tournament_schedule(int $id, ?string $scheduledAt, ?string $location): void
 {
+    if (!ensure_tournament_schedule_columns()) {
+        return;
+    }
     $stmt = db()->prepare('UPDATE tournaments SET scheduled_at = :scheduled_at, location = :location WHERE id = :id');
     $stmt->bindValue(':id', $id, PDO::PARAM_INT);
     if ($scheduledAt === null) {
@@ -158,7 +220,7 @@ function ensure_tournament_schedule(array $tournament, int $offset): array
     }
 
     if (empty($location)) {
-        $location = 'Kenton Moose Lodge Basement';
+        $location = default_tournament_location();
         $needsUpdate = true;
     }
 
@@ -173,21 +235,31 @@ function ensure_tournament_schedule(array $tournament, int $offset): array
 
 function update_tournament_details(int $id, string $name, string $type, string $description, ?string $scheduledAt, ?string $location): void
 {
-    $stmt = db()->prepare('UPDATE tournaments SET name = :name, type = :type, description = :description, scheduled_at = :scheduled_at, location = :location WHERE id = :id');
+    if (ensure_tournament_schedule_columns()) {
+        $stmt = db()->prepare('UPDATE tournaments SET name = :name, type = :type, description = :description, scheduled_at = :scheduled_at, location = :location WHERE id = :id');
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $stmt->bindValue(':name', $name, PDO::PARAM_STR);
+        $stmt->bindValue(':type', $type, PDO::PARAM_STR);
+        $stmt->bindValue(':description', $description, PDO::PARAM_STR);
+        if ($scheduledAt === null) {
+            $stmt->bindValue(':scheduled_at', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':scheduled_at', $scheduledAt, PDO::PARAM_STR);
+        }
+        if ($location === null) {
+            $stmt->bindValue(':location', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':location', $location, PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return;
+    }
+
+    $stmt = db()->prepare('UPDATE tournaments SET name = :name, type = :type, description = :description WHERE id = :id');
     $stmt->bindValue(':id', $id, PDO::PARAM_INT);
     $stmt->bindValue(':name', $name, PDO::PARAM_STR);
     $stmt->bindValue(':type', $type, PDO::PARAM_STR);
     $stmt->bindValue(':description', $description, PDO::PARAM_STR);
-    if ($scheduledAt === null) {
-        $stmt->bindValue(':scheduled_at', null, PDO::PARAM_NULL);
-    } else {
-        $stmt->bindValue(':scheduled_at', $scheduledAt, PDO::PARAM_STR);
-    }
-    if ($location === null) {
-        $stmt->bindValue(':location', null, PDO::PARAM_NULL);
-    } else {
-        $stmt->bindValue(':location', $location, PDO::PARAM_STR);
-    }
     $stmt->execute();
 }
 
@@ -245,6 +317,7 @@ function tournament_players(int $tournamentId): array
 
 function user_tournaments(int $userId): array
 {
+    ensure_tournament_schedule_columns();
     $sql = 'SELECT t.* FROM tournaments t INNER JOIN tournament_players tp ON t.id = tp.tournament_id WHERE tp.user_id = :uid ORDER BY t.updated_at DESC';
     $stmt = db()->prepare($sql);
     $stmt->execute([':uid' => $userId]);
@@ -253,6 +326,7 @@ function user_tournaments(int $userId): array
 
 function available_tournaments_for_user(): array
 {
+    ensure_tournament_schedule_columns();
     $stmt = db()->query('SELECT * FROM tournaments WHERE status = "open" ORDER BY created_at DESC');
     return $stmt->fetchAll();
 }

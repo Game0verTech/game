@@ -1148,6 +1148,15 @@ $(function () {
         }
     });
 
+    var calendarElement = document.getElementById('tournamentCalendar');
+    var defaultTournamentLocation = 'Kenton Moose Lodge Basement';
+    if (calendarElement) {
+        var locationAttribute = calendarElement.getAttribute('data-default-location');
+        if (locationAttribute) {
+            defaultTournamentLocation = locationAttribute;
+        }
+    }
+
     var tournamentDirectory = {};
 
     function parseScheduleDate(value) {
@@ -1177,7 +1186,7 @@ $(function () {
         copy.id = id;
         var scheduled = copy.scheduled_at || copy.scheduledAt;
         copy.scheduledDate = parseScheduleDate(scheduled);
-        copy.location = copy.location || 'Kenton Moose Lodge Basement';
+        copy.location = copy.location || defaultTournamentLocation;
         copy.players = Array.isArray(copy.players)
             ? copy.players.map(function (playerId) {
                 return parseInt(playerId, 10);
@@ -1219,7 +1228,7 @@ $(function () {
             return '';
         }
         var schedule = formatDateTime(tournament.scheduledDate);
-        var location = tournament.location || 'Kenton Moose Lodge Basement';
+        var location = tournament.location || defaultTournamentLocation;
         return schedule + ' • ' + location;
     }
 
@@ -1373,7 +1382,7 @@ $(function () {
         form.find('[name="description"]').val(tournament.description || '');
         form.find('[name="scheduled_date"]').val(toDateInputValue(tournament.scheduledDate));
         form.find('[name="scheduled_time"]').val(toTimeInputValue(tournament.scheduledDate));
-        form.find('[name="location"]').val(tournament.location || 'Kenton Moose Lodge Basement');
+        form.find('[name="location"]').val(tournament.location || defaultTournamentLocation);
 
         var list = modal.find('[data-player-list]');
         var toggleButton = modal.find('[data-toggle-player-list]');

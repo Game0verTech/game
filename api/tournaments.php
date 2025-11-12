@@ -51,7 +51,7 @@ switch ($action) {
         $location = trim($_POST['location'] ?? '');
         $scheduledAt = normalize_tournament_schedule_input($date, $time);
         if ($location === '') {
-            $location = 'Kenton Moose Lodge Basement';
+            $location = default_tournament_location();
         }
         if ($name === '' || !in_array($type, ['single', 'double', 'round-robin'], true)) {
             flash('error', 'Provide a name and valid tournament type.');
@@ -84,7 +84,7 @@ switch ($action) {
             $scheduledAt = $tournament['scheduled_at'] ?? null;
         }
         if ($location === '') {
-            $location = $tournament['location'] ?: 'Kenton Moose Lodge Basement';
+            $location = $tournament['location'] ?: default_tournament_location();
         }
         if ($name === '' || !in_array($type, ['single', 'double', 'round-robin'], true)) {
             flash('error', 'Please provide valid tournament details.');

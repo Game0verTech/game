@@ -266,7 +266,7 @@ if ($isTournamentTab) {
             </div>
             <button type="button" class="btn primary" data-modal-trigger="createTournamentModal">Create New Tournament</button>
         </div>
-        <div id="tournamentCalendar" class="tournament-calendar" data-tournaments='<?= sanitize($calendarJson) ?>'></div>
+        <div id="tournamentCalendar" class="tournament-calendar" data-tournaments='<?= sanitize($calendarJson) ?>' data-default-location="<?= sanitize(default_tournament_location()) ?>"></div>
     </div>
 <?php elseif ($tab === 'view'): ?>
     <?php if (!$viewTournament): ?>
@@ -419,7 +419,7 @@ if ($isTournamentTab) {
                     </label>
                 </div>
                 <label>Location
-                    <input type="text" name="location" value="Kenton Moose Lodge Basement" placeholder="Kenton Moose Lodge Basement">
+                    <input type="text" name="location" value="<?= sanitize(default_tournament_location()) ?>" placeholder="<?= sanitize(default_tournament_location()) ?>">
                 </label>
                 <div class="modal-actions">
                     <button type="submit" class="btn primary">Create Tournament</button>
@@ -475,7 +475,7 @@ if ($isTournamentTab) {
                     </label>
                 </div>
                 <label>Location
-                    <input type="text" name="location" placeholder="Kenton Moose Lodge Basement">
+                    <input type="text" name="location" placeholder="<?= sanitize(default_tournament_location()) ?>">
                 </label>
                 <div class="player-section">
                     <div class="player-section__header">
