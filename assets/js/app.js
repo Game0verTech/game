@@ -583,11 +583,15 @@ $(function () {
             return;
         }
 
+        var container = view.closest('.bracket-container');
+        var format = container && container.length ? container.attr('data-format') || container.data('format') : null;
+        var isDouble = format === 'double';
         var stageNodes = columns.find('.bracket-stage');
         var stageElements = stageNodes.length ? stageNodes.toArray() : [columns[0]];
         var baseSpacing = 32;
         var centerMap = {};
         var overallMaxHeight = 0;
+        var stageTotals = {};
 
         stageElements.forEach(function (stageNode) {
             var stageEl = $(stageNode);
@@ -695,6 +699,7 @@ $(function () {
                 var stageTitleHeight = stageEl.find('> .bracket-stage__title').outerHeight(true) || 0;
                 var stageTotal = stageMaxHeight + stageTitleHeight;
                 stageEl.css('height', stageTotal + 'px');
+                stageTotals[stageKey] = stageTotal;
                 if (stageTotal > overallMaxHeight) {
                     overallMaxHeight = stageTotal;
                 }
@@ -707,7 +712,37 @@ $(function () {
             overallMaxHeight = 200;
         }
 
-        columns.css('height', overallMaxHeight + 'px');
+        if (isDouble) {
+            var stackedHeight = 0;
+            if (stageTotals.winners) {
+                stackedHeight += stageTotals.winners;
+            }
+            if (stageTotals.losers) {
+                if (stackedHeight > 0) {
+                    try {
+                        var computed = window.getComputedStyle(columns[0]);
+                        var gapValue = computed && computed.rowGap ? parseFloat(computed.rowGap) : NaN;
+                        if (!Number.isNaN(gapValue)) {
+                            stackedHeight += gapValue;
+                        } else {
+                            stackedHeight += baseSpacing * 2;
+                        }
+                    } catch (err) {
+                        stackedHeight += baseSpacing * 2;
+                    }
+                }
+                stackedHeight += stageTotals.losers;
+            }
+            if (stageTotals.finals) {
+                stackedHeight = Math.max(stackedHeight, stageTotals.finals);
+            }
+            if (!stackedHeight) {
+                stackedHeight = overallMaxHeight;
+            }
+            columns.css('height', stackedHeight + 'px');
+        } else {
+            columns.css('height', overallMaxHeight + 'px');
+        }
     }
 
     function updateBracketConnectors(view) {

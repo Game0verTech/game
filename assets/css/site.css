@@ -1120,11 +1120,36 @@ button.danger:focus-visible,
     z-index: 1;
 }
 
+.bracket-container[data-format="double"] .bracket-columns {
+    display: grid;
+    grid-template-columns: minmax(0, max-content) minmax(260px, max-content);
+    column-gap: clamp(84px, 7vw, 168px);
+    row-gap: clamp(72px, 7vw, 140px);
+    align-items: start;
+    padding-bottom: clamp(68px, 6vw, 104px);
+}
+
 .bracket-stage {
     display: flex;
     flex-direction: column;
     gap: clamp(16px, 2.5vw, 32px);
     min-width: max-content;
+}
+
+.bracket-container[data-format="double"] .bracket-stage[data-stage="winners"] {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.bracket-container[data-format="double"] .bracket-stage[data-stage="losers"] {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.bracket-container[data-format="double"] .bracket-stage[data-stage="finals"] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
 }
 
 .bracket-stage__columns {
