@@ -112,6 +112,41 @@ function require_csrf(): void
     }
 }
 
+function normalize_utf8_value(&$value): void
+{
+    if (is_array($value)) {
+        foreach ($value as &$item) {
+            normalize_utf8_value($item);
+        }
+        unset($item);
+        return;
+    }
+
+    if (!is_string($value)) {
+        return;
+    }
+
+    $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+    if ($converted === false) {
+        $converted = @mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+    }
+    if ($converted === false) {
+        $converted = preg_replace('/[\x00-\x1F\x7F]/u', '', $value) ?? '';
+    }
+    $value = $converted;
+}
+
+function safe_json_encode($value): string
+{
+    $normalized = $value;
+    normalize_utf8_value($normalized);
+    $json = json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    if ($json === false) {
+        throw new RuntimeException('JSON encoding failed: ' . json_last_error_msg());
+    }
+    return $json;
+}
+
 function get_version(): string
 {
     $path = __DIR__ . '/../VERSION';
