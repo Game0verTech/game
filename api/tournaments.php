@@ -64,6 +64,7 @@ switch ($action) {
     case 'start':
         require_role('admin', 'manager');
         $id = (int)($_POST['tournament_id'] ?? 0);
+        seed_matches_for_tournament($id);
         $structure = generate_bracket_structure($id);
         if (!$structure) {
             flash('error', 'Unable to generate bracket. Ensure there are players registered.');
@@ -75,7 +76,6 @@ switch ($action) {
         } else {
             update_tournament_json($id, json_encode($structure), null);
         }
-        seed_matches_for_tournament($id);
         update_tournament_status($id, 'live');
         flash('success', 'Tournament started.');
         redirect('/?page=admin&t=manage&id=' . $id);
@@ -145,12 +145,29 @@ switch ($action) {
             flash('error', 'Matches can only be updated while the tournament is live.');
             redirect('/?page=admin&t=manage&id=' . $tournamentId);
         }
-        $score1 = (int)($_POST['score1'] ?? 0);
-        $score2 = (int)($_POST['score2'] ?? 0);
         $winner = (int)($_POST['winner_user_id'] ?? 0) ?: null;
-        record_match_result($tournamentId, $matchId, $score1, $score2, $winner);
+        record_match_result($tournamentId, $matchId, $winner);
         flash('success', 'Match updated.');
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
+
+    case 'set_match_winner':
+        require_role('admin', 'manager');
+        $tournamentId = (int)($_POST['tournament_id'] ?? 0);
+        $matchId = (int)($_POST['match_id'] ?? 0);
+        $winner = (int)($_POST['winner_user_id'] ?? 0) ?: null;
+        $tournament = get_tournament($tournamentId);
+        if (!$tournament || $tournament['status'] !== 'live') {
+            http_response_code(422);
+            echo json_encode(['error' => 'Tournament is not live.']);
+            exit;
+        }
+        record_match_result($tournamentId, $matchId, $winner);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'ok' => true,
+            'bracket' => generate_bracket_structure($tournamentId),
+        ]);
+        exit;
 
     default:
         http_response_code(400);
