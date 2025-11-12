@@ -76,6 +76,22 @@ $(function () {
         return null;
     }
 
+    function flagBracketError(container, meta) {
+        if (!container || !container.length) {
+            return;
+        }
+        container.addClass('has-error');
+        if (meta) {
+            container.data('lastError', meta);
+        }
+        window.clearTimeout(container.data('errorTimer'));
+        var timer = window.setTimeout(function () {
+            container.removeClass('has-error');
+            container.removeData('errorTimer');
+        }, 1600);
+        container.data('errorTimer', timer);
+    }
+
     function ensureContextMenu(container) {
         var menu = container.data('contextMenu');
         if (menu && menu.length) {
@@ -962,8 +978,8 @@ $(function () {
             return;
         }
         var interval = parseInt(container.data('refreshInterval'), 10);
-        if (!interval || interval < 3000) {
-            interval = 5000;
+        if (!interval || interval < 1500) {
+            interval = 2000;
         }
         var existing = container.data('poller');
         if (existing) {
@@ -1014,6 +1030,8 @@ $(function () {
                 if (!applyBracketPayload(container, response, mode)) {
                     fetchBracket(container, tournamentId, mode);
                 }
+                container.removeClass('has-error');
+                container.removeData('lastError');
             })
             .fail(function (xhr, textStatus) {
                 if (textStatus === 'parsererror') {
@@ -1031,22 +1049,27 @@ $(function () {
                     fetchBracket(container, tournamentId, mode);
                     return;
                 }
+                var response = xhr.responseJSON || parseJsonString(xhr.responseText);
                 var message = 'Unable to update match.';
-                if (xhr.responseJSON) {
-                    if (xhr.responseJSON.error) {
-                        message = xhr.responseJSON.error;
+                var detail = xhr.status
+                    ? 'Status ' + xhr.status + (xhr.statusText ? ' ' + xhr.statusText : '')
+                    : '';
+                if (response) {
+                    if (response.error) {
+                        message = response.error;
                     }
-                    if (xhr.responseJSON.detail) {
-                        message += '\n' + xhr.responseJSON.detail;
+                    if (response.detail) {
+                        detail = response.detail;
                     }
-                } else if (xhr.responseText) {
-                    message = xhr.responseText;
                 }
-                var detail = ['Status ' + xhr.status, xhr.statusText].filter(Boolean).join(' ');
-                if (detail) {
-                    message += '\n(' + detail + ')';
-                }
-                window.alert(message);
+                console.error('Bracket winner update failed', {
+                    message: message,
+                    detail: detail,
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                });
+                flagBracketError(container, { message: message, detail: detail });
+                fetchBracket(container, tournamentId, mode);
             })
             .always(function () {
                 container.removeClass('is-updating');

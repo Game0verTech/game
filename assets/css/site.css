@@ -486,7 +486,7 @@ button.danger:hover,
 }
 
 .bracket-match .team .score.is-hidden {
-    visibility: hidden;
+    display: none;
 }
 
 .bracket-match .team .champion-icon {
@@ -494,15 +494,15 @@ button.danger:hover,
     align-items: center;
     justify-content: center;
     margin-left: 8px;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 6px;
-    background: rgba(0, 0, 0, 0.85);
+    background: #000;
     color: #ffd952;
     font-size: 0.95rem;
     font-weight: 700;
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 215, 0, 0.65);
-    border: 1px solid rgba(255, 215, 0, 0.65);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.55), 0 0 12px rgba(255, 215, 0, 0.75);
+    border: 1px solid rgba(255, 215, 0, 0.8);
 }
 
 .bracket-match .team.is-champion .label {
@@ -582,6 +582,19 @@ button.danger:hover,
 
 .bracket-match .team.status-loss .score {
     color: rgba(168, 183, 212, 0.7);
+}
+
+.bracket-container.has-error .bracket-view {
+    animation: bracket-error-pulse 0.6s ease;
+}
+
+@keyframes bracket-error-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.35);
+    }
+    100% {
+        box-shadow: 0 0 0 16px rgba(255, 107, 107, 0);
+    }
 }
 
 .bracket-match .team.is-context-target {

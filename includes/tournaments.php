@@ -38,38 +38,17 @@ function update_tournament_status(int $id, string $status): void
 
 function update_tournament_json(int $id, ?string $bracketJson, ?string $groupJson): void
 {
-    $fields = [];
-    $params = [':id' => $id];
-
-    if ($bracketJson !== null) {
-        $fields[] = 'bracket_json = :bracket';
-        $params[':bracket'] = $bracketJson;
+    $stmt = db()->prepare('UPDATE tournaments SET bracket_json = :bracket, groups_json = :groups WHERE id = :id');
+    $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+    if ($bracketJson === null) {
+        $stmt->bindValue(':bracket', null, PDO::PARAM_NULL);
     } else {
-        $fields[] = 'bracket_json = NULL';
+        $stmt->bindValue(':bracket', $bracketJson, PDO::PARAM_STR);
     }
-
-    if ($groupJson !== null) {
-        $fields[] = 'groups_json = :groups';
-        $params[':groups'] = $groupJson;
+    if ($groupJson === null) {
+        $stmt->bindValue(':groups', null, PDO::PARAM_NULL);
     } else {
-        $fields[] = 'groups_json = NULL';
-    }
-
-    if (!$fields) {
-        return;
-    }
-
-    $sql = 'UPDATE tournaments SET ' . implode(', ', $fields) . ' WHERE id = :id';
-    $stmt = db()->prepare($sql);
-    foreach ($params as $key => $value) {
-        if ($key === ':id') {
-            $type = PDO::PARAM_INT;
-        } elseif ($value === null) {
-            $type = PDO::PARAM_NULL;
-        } else {
-            $type = PDO::PARAM_STR;
-        }
-        $stmt->bindValue($key, $value, $type);
+        $stmt->bindValue(':groups', $groupJson, PDO::PARAM_STR);
     }
     $stmt->execute();
 }
