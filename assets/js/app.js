@@ -180,8 +180,14 @@ $(function () {
                 var playerMeta = slotIndex === 0 ? meta.player1 : meta.player2;
                 if (playerMeta && playerMeta.id) {
                     team.attr('data-player-id', playerMeta.id);
+                    if (playerMeta.name) {
+                        team.attr('data-player-name', playerMeta.name);
+                    } else {
+                        team.removeAttr('data-player-name');
+                    }
                 } else {
                     team.removeAttr('data-player-id');
+                    team.removeAttr('data-player-name');
                 }
                 team.attr('data-slot', slotIndex + 1);
                 var label = computeStatusLabel(info, slotIndex, meta);
@@ -200,6 +206,8 @@ $(function () {
                 } else {
                     team.addClass('status-tbd');
                 }
+                var isSelectable = !!matchId && !!(playerMeta && playerMeta.id);
+                team.toggleClass('is-selectable', isSelectable);
             });
         });
     }
@@ -401,6 +409,9 @@ $(function () {
             event.preventDefault();
             hideContextMenu();
             var team = $(this);
+            if (!team.hasClass('is-selectable')) {
+                return;
+            }
             var playerId = parseInt(team.attr('data-player-id'), 10);
             if (!playerId) {
                 return;
@@ -415,7 +426,7 @@ $(function () {
             if (!tournamentId || !token) {
                 return;
             }
-            var playerName = $.trim(team.find('.label').text()) || 'this player';
+            var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
             var menu = getContextMenu();
             bracketContextPayload = {
                 container: container,
