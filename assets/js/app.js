@@ -203,12 +203,101 @@ $(function () {
         }
 
         var matchEl = team.closest('.bracket-match');
-        var matchId = parseInt(matchEl.attr('data-match-id'), 10);
-        var playerId = parseInt(team.attr('data-player-id'), 10);
-        var tournamentId = container.data('tournamentId');
-        var token = container.data('token');
+        var roundIndexAttr = team.attr('data-round-index');
+        if (!roundIndexAttr && matchEl.length) {
+            roundIndexAttr = matchEl.attr('data-round-index');
+        }
+        var matchIndexAttr = team.attr('data-match-index');
+        if (!matchIndexAttr && matchEl.length) {
+            matchIndexAttr = matchEl.attr('data-match-index');
+        }
+        var slotAttr = team.attr('data-slot');
 
-        if (!matchId || !playerId || !tournamentId || !token) {
+        var matchIdValue = team.attr('data-match-id');
+        if (!matchIdValue && matchEl.length) {
+            matchIdValue = matchEl.attr('data-match-id');
+        }
+        var matchId = parseInt(matchIdValue, 10);
+        if (isNaN(matchId)) {
+            matchId = null;
+        }
+
+        var playerIdValue = team.attr('data-player-id');
+        var playerId = parseInt(playerIdValue, 10);
+        if (isNaN(playerId)) {
+            playerId = null;
+        }
+
+        var tournamentIdRaw = container.data('tournamentId');
+        if (tournamentIdRaw === undefined) {
+            tournamentIdRaw = container.attr('data-tournament-id');
+        }
+        var tournamentId = parseInt(tournamentIdRaw, 10);
+        if (isNaN(tournamentId)) {
+            tournamentId = null;
+        }
+
+        var token = container.data('token') || container.attr('data-token');
+
+        var roundIndex = parseInt(roundIndexAttr, 10);
+        if (isNaN(roundIndex)) {
+            roundIndex = null;
+        }
+        var matchIndex = parseInt(matchIndexAttr, 10);
+        if (isNaN(matchIndex)) {
+            matchIndex = null;
+        }
+
+        if ((matchId === null || playerId === null) && roundIndex !== null && matchIndex !== null) {
+            var bracketData = container.data('bracketData');
+            if (bracketData && Array.isArray(bracketData.results) && bracketData.results[roundIndex]) {
+                var matchData = bracketData.results[roundIndex][matchIndex];
+                if (Array.isArray(matchData) && matchData.length >= 3) {
+                    var meta = matchData[2] || {};
+                    if (matchId === null) {
+                        if (meta.match_id !== undefined && meta.match_id !== null) {
+                            matchId = parseInt(meta.match_id, 10);
+                        } else if (meta.matchId !== undefined && meta.matchId !== null) {
+                            matchId = parseInt(meta.matchId, 10);
+                        }
+                        if (!isNaN(matchId)) {
+                            team.attr('data-match-id', matchId);
+                        } else {
+                            matchId = null;
+                        }
+                    }
+                    if (playerId === null && slotAttr) {
+                        var slotIndex = parseInt(slotAttr, 10);
+                        if (!isNaN(slotIndex)) {
+                            slotIndex = slotIndex - 1;
+                            var playerMeta = slotIndex === 0 ? meta.player1 : meta.player2;
+                            if (playerMeta && playerMeta.id !== undefined && playerMeta.id !== null) {
+                                playerId = parseInt(playerMeta.id, 10);
+                                if (!isNaN(playerId)) {
+                                    team.attr('data-player-id', playerId);
+                                } else {
+                                    playerId = null;
+                                }
+                            }
+                            if (!team.attr('data-player-name') && playerMeta && playerMeta.name) {
+                                team.attr('data-player-name', playerMeta.name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
+
+        if (roundIndex !== null && !team.attr('data-round-index')) {
+            team.attr('data-round-index', roundIndex);
+        }
+        if (matchIndex !== null && !team.attr('data-match-index')) {
+            team.attr('data-match-index', matchIndex);
+        }
+
+        if (matchId === null || playerId === null || tournamentId === null || !token) {
             if (window.console && typeof window.console.warn === 'function') {
                 console.warn('Bracket winner selection unavailable due to missing data', {
                     matchId: matchId,
@@ -220,10 +309,6 @@ $(function () {
             return null;
         }
 
-        var roundIndex = parseInt(matchEl.attr('data-round-index'), 10);
-        var matchIndex = parseInt(matchEl.attr('data-match-index'), 10);
-        var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
-
         return {
             container: container,
             matchId: matchId,
@@ -231,8 +316,8 @@ $(function () {
             tournamentId: tournamentId,
             token: token,
             playerName: playerName,
-            roundIndex: isNaN(roundIndex) ? null : roundIndex,
-            matchIndex: isNaN(matchIndex) ? null : matchIndex,
+            roundIndex: roundIndex,
+            matchIndex: matchIndex,
             team: team,
         };
     }
@@ -324,6 +409,16 @@ $(function () {
             score.text('\u00a0');
         }
         team.append(label, score);
+
+        if (options.matchId !== undefined && options.matchId !== null) {
+            team.attr('data-match-id', options.matchId);
+        }
+        if (options.roundIndex !== undefined && options.roundIndex !== null) {
+            team.attr('data-round-index', options.roundIndex);
+        }
+        if (options.matchIndex !== undefined && options.matchIndex !== null) {
+            team.attr('data-match-index', options.matchIndex);
+        }
 
         if (options.playerId) {
             team.attr('data-player-id', options.playerId);
@@ -711,6 +806,9 @@ $(function () {
                         score: slotIndex === 0 ? score1 : score2,
                         statusLabel: statusLabel,
                         isSelectable: !!(matchId && playerId),
+                        matchId: matchId,
+                        roundIndex: roundIndex,
+                        matchIndex: matchIndex,
                     });
                     matchEl.append(team);
                 });
@@ -823,12 +921,12 @@ $(function () {
         if (mode !== 'admin') {
             return;
         }
-        container.off('contextmenu.bracketAction').on('contextmenu.bracketAction', '.team', function (event) {
+        container.off('contextmenu.bracketAction').on('contextmenu.bracketAction', '.team.is-selectable', function (event) {
             event.preventDefault();
             requestWinnerSelection(container, $(this), { pageX: event.pageX, pageY: event.pageY, type: 'contextmenu' });
         });
 
-        container.off('click.bracketAction').on('click.bracketAction', '.team', function (event) {
+        container.off('click.bracketAction').on('click.bracketAction', '.team.is-selectable', function (event) {
             if (event.button !== 0) {
                 return;
             }
@@ -836,7 +934,7 @@ $(function () {
             requestWinnerSelection(container, $(this), { pageX: event.pageX, pageY: event.pageY, type: 'click' });
         });
 
-        container.off('keydown.bracketAction').on('keydown.bracketAction', '.team', function (event) {
+        container.off('keydown.bracketAction').on('keydown.bracketAction', '.team.is-selectable', function (event) {
             if (event.key !== 'Enter' && event.key !== ' ') {
                 return;
             }
@@ -844,7 +942,7 @@ $(function () {
             requestWinnerSelection(container, $(this), { type: 'keyboard' });
         });
 
-        container.off('touchend.bracketAction').on('touchend.bracketAction', '.team', function (event) {
+        container.off('touchend.bracketAction').on('touchend.bracketAction', '.team.is-selectable', function (event) {
             var touch = event.originalEvent && event.originalEvent.changedTouches ? event.originalEvent.changedTouches[0] : null;
             if (touch) {
                 event.preventDefault();
