@@ -17,11 +17,8 @@ require __DIR__ . '/../../templates/header.php';
 $players = tournament_players($tournament['id']);
 $isRegistered = $user ? is_user_registered($tournament['id'], $user['id']) : false;
 $canRegister = $tournament['status'] === 'open';
-$bracketData = $tournament['bracket_json'];
+$bracketData = tournament_bracket_snapshot($tournament);
 $groupData = $tournament['groups_json'];
-if (!$bracketData && $tournament['type'] !== 'round-robin' && $tournament['status'] === 'live') {
-    $bracketData = json_encode(generate_bracket_structure($tournament['id']));
-}
 if (!$groupData && $tournament['type'] === 'round-robin' && $tournament['status'] === 'live') {
     $groupData = json_encode(generate_bracket_structure($tournament['id']));
 }

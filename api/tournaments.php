@@ -146,8 +146,13 @@ switch ($action) {
             redirect('/?page=admin&t=manage&id=' . $tournamentId);
         }
         $winner = (int)($_POST['winner_user_id'] ?? 0) ?: null;
-        record_match_result($tournamentId, $matchId, $winner);
-        flash('success', 'Match updated.');
+        try {
+            record_match_result($tournamentId, $matchId, $winner);
+            flash('success', 'Match updated.');
+        } catch (Throwable $e) {
+            error_log('Match update failed: ' . $e->getMessage());
+            flash('error', 'Unable to update match: ' . $e->getMessage());
+        }
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
 
     case 'set_match_winner':
@@ -158,14 +163,26 @@ switch ($action) {
         $tournament = get_tournament($tournamentId);
         if (!$tournament || $tournament['status'] !== 'live') {
             http_response_code(422);
-            echo json_encode(['error' => 'Tournament is not live.']);
+            header('Content-Type: application/json');
+            echo safe_json_encode(['error' => 'Tournament is not live.']);
             exit;
         }
-        record_match_result($tournamentId, $matchId, $winner);
+        try {
+            $bracket = record_match_result($tournamentId, $matchId, $winner);
+        } catch (Throwable $e) {
+            error_log('Match update failed: ' . $e->getMessage());
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo safe_json_encode([
+                'error' => 'Unable to update match.',
+                'detail' => $e->getMessage(),
+            ]);
+            exit;
+        }
         header('Content-Type: application/json');
-        echo json_encode([
+        echo safe_json_encode([
             'ok' => true,
-            'bracket' => generate_bracket_structure($tournamentId),
+            'bracket' => $bracket,
         ]);
         exit;
 
