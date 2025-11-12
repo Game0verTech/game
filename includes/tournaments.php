@@ -283,23 +283,6 @@ function single_elimination_pairs(array $players): array
     return $pairs;
 }
 
-function auto_advance_byes(int $tournamentId): void
-{
-    $matches = tournament_matches($tournamentId);
-    foreach ($matches as $match) {
-        if ($match['stage'] !== 'main' || (int)$match['round'] !== 1) {
-            continue;
-        }
-        $p1 = $match['player1_user_id'] ? (int)$match['player1_user_id'] : null;
-        $p2 = $match['player2_user_id'] ? (int)$match['player2_user_id'] : null;
-        if ($p1 && !$p2) {
-            record_match_result($tournamentId, (int)$match['id'], $p1);
-        } elseif ($p2 && !$p1) {
-            record_match_result($tournamentId, (int)$match['id'], $p2);
-        }
-    }
-}
-
 function seed_matches_for_tournament(int $tournamentId): void
 {
     $tournament = get_tournament($tournamentId);
@@ -354,7 +337,6 @@ function seed_matches_for_tournament(int $tournamentId): void
             $matchesInRound = (int)ceil($matchesInRound / 2);
             $round++;
         }
-        auto_advance_byes($tournamentId);
         return;
     }
 

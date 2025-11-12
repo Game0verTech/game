@@ -158,15 +158,33 @@ $(function () {
         });
     }
 
+    function hasRenderableMatches(data) {
+        if (!data) {
+            return false;
+        }
+        if (Array.isArray(data.teams) && data.teams.length > 0) {
+            return true;
+        }
+        if (Array.isArray(data.results)) {
+            return data.results.some(function (round) {
+                return Array.isArray(round) && round.length > 0;
+            });
+        }
+        return false;
+    }
+
     function renderBracket(container, data, mode) {
+        if (!hasRenderableMatches(data)) {
+            return;
+        }
         container.empty();
         container.removeData('bracket');
         var options = {
             init: data,
-            teamWidth: 160,
+            teamWidth: 190,
             scoreWidth: 0,
-            matchMargin: 20,
-            roundMargin: 60,
+            matchMargin: 28,
+            roundMargin: 90,
             disableToolbar: true,
             disableTeamEdit: true,
             save: function () {}
@@ -178,6 +196,7 @@ $(function () {
         if (mode === 'admin') {
             updateMatchSummary(container, data);
         }
+        enableAdminControls(container, mode);
     }
 
     function fetchBracket(container, tournamentId, mode) {
@@ -188,6 +207,9 @@ $(function () {
                 }
                 var serialized = JSON.stringify(response.bracket);
                 if (container.data('bracketState') !== serialized) {
+                    if (!hasRenderableMatches(response.bracket)) {
+                        return;
+                    }
                     renderBracket(container, response.bracket, mode);
                 }
             })
@@ -291,7 +313,6 @@ $(function () {
         }
         var mode = container.data('mode') || 'viewer';
         renderBracket(container, data, mode);
-        enableAdminControls(container, mode);
         var tournamentId = container.data('tournamentId');
         setupPolling(container, tournamentId, mode);
     });

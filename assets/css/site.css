@@ -399,19 +399,37 @@ button.danger:hover,
 
 .bracket-container {
     overflow-x: auto;
-    padding: 16px;
+    padding: 24px 28px;
     border: 1px solid #243043;
-    border-radius: 8px;
+    border-radius: 12px;
     background: radial-gradient(circle at top left, rgba(40, 56, 79, 0.35), transparent 60%), #111723;
+    min-height: 320px;
+}
+
+.bracket-container .jQBracket {
+    padding-bottom: 8px;
+}
+
+.bracket-container .jQBracket .round {
+    margin-right: 90px;
+}
+
+.bracket-container .jQBracket .round:last-child {
+    margin-right: 0;
+}
+
+.bracket-container .jQBracket .match {
+    margin-bottom: 28px;
 }
 
 .bracket-container .jQBracket .team {
     background: rgba(27, 38, 56, 0.95);
     color: #f0f4ff;
-    border-radius: 6px;
-    margin-bottom: 10px;
+    border-radius: 8px;
+    margin-bottom: 16px;
     transition: background-color 0.2s ease, transform 0.2s ease;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35);
+    padding: 10px 16px;
 }
 
 .bracket-container .jQBracket .team.win {
@@ -427,7 +445,7 @@ button.danger:hover,
 .bracket-container .jQBracket .team .label {
     font-weight: 600;
     letter-spacing: 0.02em;
-    padding: 6px 10px;
+    display: block;
 }
 
 .bracket-container .jQBracket .team .score {
