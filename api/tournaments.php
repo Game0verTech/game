@@ -158,6 +158,7 @@ switch ($action) {
         $tournament = get_tournament($tournamentId);
         if (!$tournament || $tournament['status'] !== 'live') {
             http_response_code(422);
+            header('Content-Type: application/json');
             echo json_encode(['error' => 'Tournament is not live.']);
             exit;
         }

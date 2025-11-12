@@ -323,6 +323,18 @@ $(function () {
     }
 
     function requestWinnerSelection(container, team, origin) {
+        var status = container.data('status');
+        if (!status) {
+            status = container.attr('data-status');
+        }
+        if (status && status !== 'live') {
+            var statusMessage = 'Please start the tournament before recording match winners.';
+            if (status === 'completed') {
+                statusMessage = 'This tournament has already been completed.';
+            }
+            window.alert(statusMessage);
+            return;
+        }
         setupContextMenu(container);
         var payload = extractTeamPayload(container, team);
         if (!payload) {
@@ -840,6 +852,10 @@ $(function () {
     function fetchBracket(container, tournamentId, mode) {
         $.getJSON('/api/bracket.php', { tournament_id: tournamentId })
             .done(function (response) {
+                if (response && response.status) {
+                    container.data('status', response.status);
+                    container.attr('data-status', response.status);
+                }
                 if (!response || !response.bracket) {
                     return;
                 }
@@ -909,6 +925,12 @@ $(function () {
                 var message = 'Unable to update match.';
                 if (xhr.responseJSON && xhr.responseJSON.error) {
                     message = xhr.responseJSON.error;
+                } else if (xhr.responseText) {
+                    message = xhr.responseText;
+                }
+                var detail = ['Status ' + xhr.status, xhr.statusText].filter(Boolean).join(' ');
+                if (detail) {
+                    message += '\n(' + detail + ')';
                 }
                 window.alert(message);
             })

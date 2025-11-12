@@ -30,4 +30,5 @@ echo json_encode([
     'bracket' => $bracket,
     'checksum' => sha1(json_encode($bracket)),
     'updated_at' => $tournament['updated_at'],
+    'status' => $tournament['status'],
 ]);

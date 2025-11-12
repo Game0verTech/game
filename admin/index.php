@@ -315,6 +315,7 @@ $config = load_config();
                         data-mode="admin"
                         data-token="<?= csrf_token() ?>"
                         data-tournament-id="<?= (int)$current['id'] ?>"
+                        data-status="<?= sanitize($current['status']) ?>"
                         data-live="1"
                     ></div>
                 </div>
