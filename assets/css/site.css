@@ -398,7 +398,7 @@ button.danger:hover,
 }
 
 .bracket-container {
-    overflow-x: auto;
+    overflow: auto;
     padding: 32px 36px;
     border: 1px solid rgba(58, 75, 102, 0.6);
     border-radius: 16px;
@@ -408,108 +408,114 @@ button.danger:hover,
     box-shadow: 0 22px 40px rgba(0, 0, 0, 0.35);
 }
 
-.bracket-container .bracket-root {
-    min-width: 640px;
-}
-
-.bracket-container .jQBracket {
-    padding: 12px 12px 24px;
-}
-
-
-.bracket-container .jQBracket .round {
-    margin-right: 120px;
-}
-
-.bracket-container .jQBracket .round:last-child {
-    margin-right: 0;
-}
-
-.bracket-container .jQBracket .match {
-    margin-bottom: 28px;
-}
-
-.bracket-container .jQBracket .match:last-child {
-    margin-bottom: 0;
-}
-
-.bracket-container .jQBracket .team {
+.bracket-view {
     position: relative;
-    float: left;
-    width: 100%;
-    height: 40px;
-    background: rgba(24, 35, 52, 0.95);
-    color: #f5f8ff;
-    border-radius: 12px;
-    font-size: 0.92rem;
-    letter-spacing: 0.01em;
-    border: 1px solid rgba(136, 160, 198, 0.18);
-    box-sizing: border-box;
-    box-shadow: 0 14px 24px rgba(8, 12, 22, 0.45);
-    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    min-width: max-content;
 }
 
-.bracket-container .jQBracket .team.is-selectable {
-    cursor: context-menu;
+.bracket-columns {
+    position: relative;
+    display: flex;
+    gap: 120px;
+    padding: 8px 16px 40px 0;
+    min-width: max-content;
+    z-index: 1;
 }
 
-.bracket-container .jQBracket .team div.label {
-    position: absolute;
-    inset: 0;
+.bracket-round {
+    position: relative;
+    width: 260px;
+    padding-right: 20px;
+}
+
+.bracket-round__title {
+    margin-bottom: 18px;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(197, 212, 246, 0.82);
+}
+
+.bracket-round__matches {
+    position: relative;
+    min-height: 120px;
+}
+
+.bracket-match {
+    width: 260px;
+    border-radius: 14px;
+    border: 1px solid rgba(136, 160, 198, 0.24);
+    background: linear-gradient(135deg, rgba(20, 31, 49, 0.96), rgba(26, 38, 60, 0.96));
+    box-shadow: 0 18px 28px rgba(8, 12, 22, 0.45);
+    overflow: hidden;
+}
+
+.bracket-match .team {
+    position: relative;
     display: flex;
     align-items: center;
-    padding: 0 44px 0 18px;
-    box-sizing: border-box;
-    font-weight: 600;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(24, 35, 52, 0.92);
+    color: #f5f8ff;
+    font-size: 0.95rem;
     letter-spacing: 0.01em;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.bracket-match .team + .team {
+    border-top: 1px solid rgba(136, 160, 198, 0.2);
+}
+
+.bracket-match .team .label {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.bracket-container .jQBracket .team.win {
-    background: linear-gradient(140deg, rgba(44, 161, 107, 0.95), rgba(73, 204, 148, 0.95));
-    border-color: rgba(94, 220, 171, 0.65);
-    color: #f8fffb;
+.bracket-match .team .score {
+    width: 34px;
+    text-align: right;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: rgba(182, 197, 232, 0.9);
 }
 
-.bracket-container .jQBracket .team.lose {
-    background: rgba(19, 26, 38, 0.74);
-    border-color: rgba(108, 121, 150, 0.28);
-    color: #c0cadf;
-}
-
-.bracket-container .jQBracket .team .score {
+.bracket-match .team .score.is-hidden {
     display: none;
 }
 
-.bracket-container .jQBracket .connector {
-    border-color: rgba(107, 139, 194, 0.65);
-    border-width: 2px;
+.bracket-match .team .champion-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: #000;
+    color: #ffd952;
+    font-size: 0.95rem;
+    font-weight: 700;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.55), 0 0 12px rgba(255, 215, 0, 0.75);
+    border: 1px solid rgba(255, 215, 0, 0.8);
 }
 
-.bracket-container .jQBracket .connector.highlight,
-.bracket-container .jQBracket .connector.highlightWinner {
-    border-color: rgba(83, 199, 153, 0.85);
+.bracket-match .team.is-champion .label {
+    font-weight: 700;
 }
 
-.bracket-container .jQBracket .team:hover {
-    transform: none;
-    box-shadow: 0 16px 28px rgba(8, 12, 22, 0.55);
-    background: rgba(33, 47, 68, 0.98);
-}
-
-.bracket-container .jQBracket .team.win:hover {
-    background: linear-gradient(140deg, rgba(52, 181, 122, 0.98), rgba(88, 218, 163, 0.98));
-}
-
-.bracket-container .jQBracket .team::after {
+.bracket-match .team::after {
     content: attr(data-status-label);
     position: absolute;
     top: 50%;
-    right: 14px;
+    right: 12px;
     transform: translateY(-50%);
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -520,44 +526,107 @@ button.danger:hover,
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-.bracket-container .jQBracket .team.status-tbd::after {
+.bracket-match .team.status-tbd::after {
     background: rgba(106, 117, 143, 0.24);
     color: rgba(222, 228, 245, 0.62);
 }
 
-.bracket-container .jQBracket .team.status-ready::after {
+.bracket-match .team.status-tbd {
+    color: rgba(196, 205, 226, 0.76);
+}
+
+.bracket-match .team.status-ready::after {
     background: rgba(88, 142, 224, 0.25);
     color: rgba(162, 193, 255, 0.88);
 }
 
-.bracket-container .jQBracket .team.status-win::after {
+.bracket-match .team.status-ready {
+    background: rgba(33, 47, 68, 0.92);
+}
+
+.bracket-match .team.status-win::after {
     background: rgba(55, 184, 130, 0.25);
     color: rgba(176, 246, 213, 0.96);
 }
 
-.bracket-container .jQBracket .team.status-loss::after {
+.bracket-match .team.status-loss::after {
     background: rgba(214, 103, 128, 0.22);
     color: rgba(253, 198, 210, 0.92);
 }
 
-.bracket-container .jQBracket .team.is-context-target {
+.bracket-match .team.is-selectable {
+    cursor: pointer;
+}
+
+.bracket-match .team:hover,
+.bracket-match .team:focus {
+    outline: none;
+    transform: translateY(-1px);
+    box-shadow: inset 0 0 0 1px rgba(93, 149, 233, 0.35);
+    background: rgba(35, 50, 74, 0.98);
+}
+
+.bracket-match .team.status-win {
+    background: linear-gradient(140deg, rgba(44, 161, 107, 0.9), rgba(73, 204, 148, 0.9));
+    color: #f8fffb;
+}
+
+.bracket-match .team.status-win .score {
+    color: #ffffff;
+}
+
+.bracket-match .team.status-loss {
+    background: rgba(19, 26, 38, 0.85);
+    color: rgba(187, 199, 226, 0.85);
+}
+
+.bracket-match .team.status-loss .score {
+    color: rgba(168, 183, 212, 0.7);
+}
+
+.bracket-container.has-error .bracket-view {
+    animation: bracket-error-pulse 0.6s ease;
+}
+
+@keyframes bracket-error-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.35);
+    }
+    100% {
+        box-shadow: 0 0 0 16px rgba(255, 107, 107, 0);
+    }
+}
+
+.bracket-match .team.is-context-target {
     box-shadow: 0 0 0 2px rgba(94, 149, 233, 0.55), 0 18px 32px rgba(8, 12, 22, 0.55);
     background: rgba(35, 50, 74, 0.98);
 }
 
+.bracket-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+
 .bracket-context-menu {
     position: absolute;
-    z-index: 9999;
-    min-width: 200px;
-    padding: 8px;
+    left: -9999px;
+    top: -9999px;
+    min-width: 220px;
+    padding: 10px 0;
     border-radius: 12px;
-    border: 1px solid rgba(107, 139, 194, 0.35);
-    background: linear-gradient(145deg, rgba(19, 28, 44, 0.96), rgba(32, 45, 68, 0.96));
-    box-shadow: 0 22px 38px rgba(7, 11, 21, 0.65);
+    background: rgba(20, 29, 45, 0.98);
+    box-shadow: 0 22px 38px rgba(7, 10, 18, 0.7);
+    border: 1px solid rgba(116, 138, 176, 0.4);
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(0.96);
+    transition: opacity 0.18s ease, transform 0.18s ease;
     pointer-events: none;
-    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: 1200;
 }
 
 .bracket-context-menu.is-visible {
@@ -566,25 +635,39 @@ button.danger:hover,
     pointer-events: auto;
 }
 
-.bracket-context-menu__item {
+.bracket-context-menu__action {
+    display: block;
     width: 100%;
-    padding: 9px 12px;
-    border: none;
-    border-radius: 9px;
+    padding: 10px 18px;
     background: transparent;
-    color: #e6edff;
-    font-size: 0.85rem;
-    font-weight: 600;
+    border: 0;
     text-align: left;
+    font-size: 0.92rem;
+    color: rgba(227, 236, 255, 0.92);
     cursor: pointer;
-    transition: background-color 0.16s ease, color 0.16s ease;
+    transition: background-color 0.18s ease;
 }
 
-.bracket-context-menu__item:hover,
-.bracket-context-menu__item:focus {
-    background: rgba(88, 142, 224, 0.25);
-    color: #ffffff;
+.bracket-context-menu__action:hover,
+.bracket-context-menu__action:focus {
     outline: none;
+    background: rgba(70, 104, 170, 0.28);
+}
+
+.bracket-context-menu__action + .bracket-context-menu__action {
+    border-top: 1px solid rgba(116, 138, 176, 0.25);
+}
+
+.bracket-connector {
+    fill: none;
+    stroke: rgba(107, 139, 194, 0.65);
+    stroke-width: 2;
+}
+
+.bracket-placeholder {
+    margin: 0;
+    color: rgba(193, 205, 230, 0.75);
+    font-style: italic;
 }
 
 .bracket-container.is-updating {
