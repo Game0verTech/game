@@ -38,12 +38,11 @@ function update_tournament_status(int $id, string $status): void
 
 function update_tournament_json(int $id, ?string $bracketJson, ?string $groupJson): void
 {
-    $stmt = db()->prepare('UPDATE tournaments SET bracket_json = :bracket, groups_json = :groupjson WHERE id = :id');
-    $stmt->execute([
-        ':bracket' => $bracketJson,
-        ':groupjson' => $groupJson,
-        ':id' => $id,
-    ]);
+    $stmt = db()->prepare('UPDATE tournaments SET bracket_json = ?, groups_json = ? WHERE id = ?');
+    $stmt->bindValue(1, $bracketJson, $bracketJson === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+    $stmt->bindValue(2, $groupJson, $groupJson === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+    $stmt->bindValue(3, $id, PDO::PARAM_INT);
+    $stmt->execute();
 }
 
 function add_player_to_tournament(int $tournamentId, int $userId): bool
@@ -356,14 +355,14 @@ function seed_matches_for_tournament(int $tournamentId): void
     }
 }
 
-function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): void
+function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): array
 {
     $pdo = db();
     $matchStmt = $pdo->prepare('SELECT * FROM tournament_matches WHERE id = :id AND tournament_id = :tid');
     $matchStmt->execute([':id' => $matchId, ':tid' => $tournamentId]);
     $match = $matchStmt->fetch();
     if (!$match) {
-        return;
+        throw new RuntimeException('Match not found.');
     }
 
     $score1 = null;
@@ -372,7 +371,7 @@ function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): v
         $isPlayer1 = (int)($match['player1_user_id'] ?? 0) === $winnerId;
         $isPlayer2 = (int)($match['player2_user_id'] ?? 0) === $winnerId;
         if (!$isPlayer1 && !$isPlayer2) {
-            return;
+            throw new RuntimeException('Selected winner is not part of this match.');
         }
         $score1 = $isPlayer1 ? 1 : 0;
         $score2 = $isPlayer2 ? 1 : 0;
@@ -390,8 +389,13 @@ function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): v
     propagate_winner_to_next_match($tournamentId, $match, $winnerId);
     refresh_player_stats_for_match($match, $winnerId);
     clear_following_results($tournamentId, $match['stage'], (int)$match['round'], (int)$match['match_index']);
-    update_tournament_json($tournamentId, json_encode(generate_bracket_structure($tournamentId)), null);
+
+    $bracket = generate_bracket_structure($tournamentId);
+    $bracketJson = safe_json_encode($bracket);
+    update_tournament_json($tournamentId, $bracketJson, null);
     touch_tournament($tournamentId);
+
+    return $bracket;
 }
 
 function refresh_player_stats_for_match(array $match, ?int $winnerId): void
@@ -414,12 +418,18 @@ function propagate_winner_to_next_match(int $tournamentId, array $match, ?int $w
 {
     if (!$winnerId) {
         $slotColumn = ((int)$match['match_index'] % 2 === 1) ? 'player1_user_id' : 'player2_user_id';
-        $stmt = db()->prepare("UPDATE tournament_matches SET {$slotColumn} = NULL WHERE tournament_id = :tid AND stage = :stage AND round = :round AND match_index = :index");
+        $nextRound = (int)$match['round'] + 1;
+        $nextIndex = (int)ceil(((int)$match['match_index']) / 2);
+        $sql = sprintf(
+            'UPDATE tournament_matches SET %s = NULL WHERE tournament_id = :tid AND stage = :stage AND round = :round AND match_index = :index',
+            $slotColumn
+        );
+        $stmt = db()->prepare($sql);
         $stmt->execute([
             ':tid' => $tournamentId,
             ':stage' => $match['stage'],
-            ':round' => (int)$match['round'] + 1,
-            ':index' => (int)ceil(((int)$match['match_index']) / 2),
+            ':round' => $nextRound,
+            ':index' => $nextIndex,
         ]);
         return;
     }
