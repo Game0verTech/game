@@ -61,4 +61,11 @@ $(function () {
         }
         container.group(options);
     });
+
+    $('.js-confirm').on('submit', function (e) {
+        var message = $(this).data('confirm') || 'Are you sure?';
+        if (!window.confirm(message)) {
+            e.preventDefault();
+        }
+    });
 });

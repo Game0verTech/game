@@ -58,7 +58,21 @@ switch ($action) {
             flash('success', 'Welcome back, ' . $user['username'] . '!');
             redirect('/?page=dashboard');
         }
-        flash('error', 'Invalid credentials or unverified account.');
+        $lookup = get_user_by_username($username);
+        if (!$lookup) {
+            $lookup = get_user_by_email($username);
+        }
+        if ($lookup && password_verify($password, $lookup['password_hash'])) {
+            if ((int)$lookup['is_banned'] === 1) {
+                flash('error', 'Your account has been banned. Contact an administrator for assistance.');
+                redirect('/?page=login');
+            }
+            if ((int)$lookup['is_active'] !== 1) {
+                flash('error', 'Please verify your email before logging in.');
+                redirect('/?page=login');
+            }
+        }
+        flash('error', 'Invalid credentials.');
         redirect('/?page=login');
 
     case 'logout':

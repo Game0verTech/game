@@ -82,7 +82,7 @@ if ($step === 2) {
                 $pdo->exec($schema);
 
                 $hash = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, role, is_active, created_at, updated_at) VALUES (:username, :email, :hash, 'admin', 1, NOW(), NOW())");
+                $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, role, is_active, is_banned, created_at, updated_at) VALUES (:username, :email, :hash, 'admin', 1, 0, NOW(), NOW())");
                 $stmt->execute([
                     ':username' => $username,
                     ':email' => $email,

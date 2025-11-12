@@ -4,7 +4,7 @@ function rebuild_user_stats(): void
 {
     $pdo = db();
     $pdo->exec('DELETE FROM user_stats');
-    $users = $pdo->query('SELECT id FROM users WHERE is_active = 1');
+    $users = $pdo->query('SELECT id FROM users WHERE is_active = 1 AND is_banned = 0');
     foreach ($users as $user) {
         update_user_stat((int)$user['id']);
     }

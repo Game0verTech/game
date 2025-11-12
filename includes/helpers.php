@@ -45,8 +45,18 @@ function user_has_role(string ...$roles): bool
 
 function require_login(): void
 {
-    if (!current_user()) {
+    $sessionUser = current_user();
+    if (!$sessionUser) {
         redirect('/?page=login');
+    }
+    $fresh = get_user_by_id((int)$sessionUser['id']);
+    if (!$fresh || (int)$fresh['is_active'] !== 1 || (int)$fresh['is_banned'] === 1) {
+        logout_user();
+        flash('error', 'Your account is not permitted to access the site.');
+        redirect('/?page=login');
+    }
+    if ($fresh['username'] !== $sessionUser['username'] || $fresh['email'] !== $sessionUser['email'] || $fresh['role'] !== $sessionUser['role']) {
+        store_session_user($fresh);
     }
 }
 

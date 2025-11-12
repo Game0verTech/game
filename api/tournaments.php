@@ -13,6 +13,7 @@ $user = current_user();
 switch ($action) {
     case 'register':
         require_login();
+        $user = current_user();
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $tournament = get_tournament($tournamentId);
         if (!$tournament || $tournament['status'] !== 'open') {
@@ -29,6 +30,7 @@ switch ($action) {
 
     case 'withdraw':
         require_login();
+        $user = current_user();
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $tournament = get_tournament($tournamentId);
         if (!$tournament || $tournament['status'] !== 'open') {
@@ -89,6 +91,11 @@ switch ($action) {
         require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $userId = (int)($_POST['user_id'] ?? 0);
+        $target = get_user_by_id($userId);
+        if (!$target || (int)$target['is_banned'] === 1) {
+            flash('error', 'Cannot add banned or unknown users.');
+            redirect('/?page=admin&t=manage&id=' . $tournamentId);
+        }
         add_player_to_tournament($tournamentId, $userId);
         flash('success', 'Player added.');
         redirect('/?page=admin&t=manage&id=' . $tournamentId);

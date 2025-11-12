@@ -294,3 +294,16 @@ form button {
     clip: rect(0, 0, 0, 0);
     border: 0;
 }
+
+button.danger,
+.inline .danger {
+    background: #c0392b;
+    border-color: #c0392b;
+    color: #fff;
+}
+
+button.danger:hover,
+.inline .danger:hover {
+    background: #e74c3c;
+    border-color: #e74c3c;
+}

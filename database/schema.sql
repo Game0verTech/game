@@ -5,11 +5,13 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('admin','manager','player') NOT NULL DEFAULT 'player',
     is_active TINYINT(1) NOT NULL DEFAULT 0,
+    is_banned TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     email_verify_token VARCHAR(255) DEFAULT NULL,
     email_verify_expires DATETIME DEFAULT NULL,
-    INDEX (is_active)
+    INDEX idx_user_active (is_active),
+    INDEX idx_user_banned (is_banned)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tournaments (

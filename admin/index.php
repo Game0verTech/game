@@ -144,11 +144,20 @@ $config = load_config();
                 </thead>
                 <tbody>
                     <?php foreach ($users as $account): ?>
+                        <?php
+                            $isBanned = (int)$account['is_banned'] === 1;
+                            $status = 'Pending';
+                            if ($isBanned) {
+                                $status = 'Banned';
+                            } elseif ((int)$account['is_active'] === 1) {
+                                $status = 'Active';
+                            }
+                        ?>
                         <tr>
                             <td><?= (int)$account['id'] ?></td>
                             <td><?= sanitize($account['username']) ?></td>
                             <td><?= sanitize($account['email']) ?></td>
-                            <td><?= (int)$account['is_active'] === 1 ? 'Active' : 'Pending' ?></td>
+                            <td><?= $status ?></td>
                             <td><?= ucfirst($account['role']) ?></td>
                             <td><?= sanitize(date('Y-m-d H:i', strtotime($account['created_at']))) ?></td>
                             <td><?= sanitize(date('Y-m-d H:i', strtotime($account['updated_at']))) ?></td>
@@ -166,8 +175,20 @@ $config = load_config();
                                         </select>
                                         <button type="submit">Update</button>
                                     </form>
+                                    <form method="post" action="/api/admin.php" class="inline">
+                                        <input type="hidden" name="action" value="<?= $isBanned ? 'unban_user' : 'ban_user' ?>">
+                                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                        <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
+                                        <button type="submit"><?= $isBanned ? 'Unban' : 'Ban' ?></button>
+                                    </form>
+                                    <form method="post" action="/api/admin.php" class="inline js-confirm" data-confirm="Delete <?= sanitize($account['username']) ?>? This cannot be undone.">
+                                        <input type="hidden" name="action" value="delete_user">
+                                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                        <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
+                                        <button type="submit" class="danger">Delete</button>
+                                    </form>
                                 <?php else: ?>
-                                    <span class="muted">Cannot change own role</span>
+                                    <span class="muted">Cannot modify own account</span>
                                 <?php endif; ?>
                             </td>
                         </tr>

@@ -28,4 +28,5 @@ if (!env_config_exists() || !install_is_locked()) {
 
 if (env_config_exists() && install_is_locked()) {
     ensure_user_role_enum();
+    ensure_user_ban_column();
 }

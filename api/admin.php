@@ -22,6 +22,9 @@ switch ($action) {
     case 'set_role':
     case 'create_user':
     case 'seed_test_player':
+    case 'ban_user':
+    case 'unban_user':
+    case 'delete_user':
         require_role('admin');
         break;
     default:
@@ -148,6 +151,60 @@ switch ($action) {
     case 'seed_test_player':
         $player = create_test_player();
         flash('success', 'Created test player ' . $player['username'] . ' with default password.');
+        redirect('/?page=admin&t=users');
+
+    case 'ban_user':
+    case 'unban_user':
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $current = current_user();
+        if ($targetId === 0) {
+            flash('error', 'User not specified.');
+            redirect('/?page=admin&t=users');
+        }
+        if ($targetId === (int)$current['id']) {
+            flash('error', 'You cannot modify your own ban status.');
+            redirect('/?page=admin&t=users');
+        }
+        $target = get_user_by_id($targetId);
+        if (!$target) {
+            flash('error', 'User not found.');
+            redirect('/?page=admin&t=users');
+        }
+        if ($target['role'] === 'admin' && remaining_admins_excluding($targetId) === 0 && $action === 'ban_user') {
+            flash('error', 'At least one active administrator must remain.');
+            redirect('/?page=admin&t=users');
+        }
+        if ($action === 'ban_user') {
+            ban_user($targetId);
+            flash('success', 'User banned successfully.');
+        } else {
+            unban_user($targetId);
+            flash('success', 'User reinstated successfully.');
+        }
+        redirect('/?page=admin&t=users');
+
+    case 'delete_user':
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $current = current_user();
+        if ($targetId === 0) {
+            flash('error', 'User not specified.');
+            redirect('/?page=admin&t=users');
+        }
+        if ($targetId === (int)$current['id']) {
+            flash('error', 'You cannot delete your own account.');
+            redirect('/?page=admin&t=users');
+        }
+        $target = get_user_by_id($targetId);
+        if (!$target) {
+            flash('error', 'User not found.');
+            redirect('/?page=admin&t=users');
+        }
+        if ($target['role'] === 'admin' && remaining_admins_excluding($targetId) === 0) {
+            flash('error', 'Cannot delete the last active administrator.');
+            redirect('/?page=admin&t=users');
+        }
+        delete_user($targetId);
+        flash('success', 'User deleted successfully.');
         redirect('/?page=admin&t=users');
 
     default:
