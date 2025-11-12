@@ -90,51 +90,12 @@ function available_tournaments_for_user(): array
 function generate_bracket_structure(int $tournamentId): array
 {
     $tournament = get_tournament($tournamentId);
-    $players = tournament_players($tournamentId);
-    $teams = [];
-    foreach (array_chunk($players, 2) as $chunk) {
-        $name1 = $chunk[0]['username'] ?? 'BYE';
-        $name2 = $chunk[1]['username'] ?? 'BYE';
-        $teams[] = [$name1, $name2];
+    if (!$tournament) {
+        return [];
     }
-    if ($tournament['type'] !== 'round-robin' && count($teams) > 0) {
-        $teamCount = count($teams);
-        $target = 1;
-        while ($target < $teamCount) {
-            $target *= 2;
-        }
-        while ($teamCount < $target) {
-            $teams[] = ['BYE', 'BYE'];
-            $teamCount++;
-        }
-    }
-    $results = [];
-    if ($tournament['type'] === 'single') {
-        $matches = count($teams);
-        while ($matches > 0) {
-            $round = [];
-            for ($i = 0; $i < $matches; $i++) {
-                $round[] = [null, null];
-            }
-            $results[] = $round;
-            if ($matches === 1) {
-                break;
-            }
-            $matches = (int)ceil($matches / 2);
-        }
-        return ['teams' => $teams, 'results' => $results];
-    }
-    if ($tournament['type'] === 'double') {
-        $round = [];
-        foreach ($teams as $_) {
-            $round[] = [null, null];
-        }
-        $winners = [$round];
-        $losers = [$round];
-        $finals = [[null, null], [null, null]];
-        return ['teams' => $teams, 'results' => [$winners, $losers, [$finals]]];
-    }
+
     if ($tournament['type'] === 'round-robin') {
+        $players = tournament_players($tournamentId);
         $teamNames = array_map(fn($p) => ['name' => $p['username']], $players);
         $results = [];
         foreach ($teamNames as $i => $team) {
@@ -146,7 +107,197 @@ function generate_bracket_structure(int $tournamentId): array
         }
         return ['teams' => $teamNames, 'results' => $results];
     }
+
+    if ($tournament['type'] === 'single') {
+        return build_single_elimination_bracket($tournamentId);
+    }
+
+    if ($tournament['type'] === 'double') {
+        $players = tournament_players($tournamentId);
+        $slots = array_map(fn($p) => $p['username'], $players);
+        if (empty($slots)) {
+            $slots = ['TBD', 'TBD'];
+        }
+        while (count($slots) % 2 !== 0) {
+            $slots[] = 'BYE';
+        }
+        $teams = [];
+        for ($i = 0; $i < count($slots); $i += 2) {
+            $teams[] = [$slots[$i], $slots[$i + 1] ?? 'BYE'];
+        }
+        $roundTemplate = [];
+        foreach ($teams as $_) {
+            $roundTemplate[] = [null, null];
+        }
+        $winners = [$roundTemplate];
+        $losers = [$roundTemplate];
+        $finals = [[null, null], [null, null]];
+        return ['teams' => $teams, 'results' => [$winners, $losers, [$finals]]];
+    }
+
     return [];
+}
+
+function build_single_elimination_bracket(int $tournamentId): array
+{
+    $matches = tournament_matches($tournamentId);
+    $rounds = [];
+    $teams = [];
+    if ($matches) {
+        foreach ($matches as $match) {
+            if ($match['stage'] !== 'main') {
+                continue;
+            }
+            $roundIndex = max(0, (int)$match['round'] - 1);
+            $rounds[$roundIndex] ??= [];
+            $score1 = $match['score1'];
+            $score2 = $match['score2'];
+            if ($match['winner_user_id'] && $score1 === null && $score2 === null) {
+                if ($match['winner_user_id'] === $match['player1_user_id']) {
+                    $score1 = 1;
+                    $score2 = 0;
+                } elseif ($match['winner_user_id'] === $match['player2_user_id']) {
+                    $score1 = 0;
+                    $score2 = 1;
+                }
+            }
+            $rounds[$roundIndex][] = [
+                $score1 === null ? null : (int)$score1,
+                $score2 === null ? null : (int)$score2,
+                [
+                    'match_id' => (int)$match['id'],
+                    'round' => $roundIndex,
+                    'match' => count($rounds[$roundIndex]),
+                    'player1' => $match['player1_user_id'] ? [
+                        'id' => (int)$match['player1_user_id'],
+                        'name' => $match['player1_name'] ?? 'TBD',
+                    ] : null,
+                    'player2' => $match['player2_user_id'] ? [
+                        'id' => (int)$match['player2_user_id'],
+                        'name' => $match['player2_name'] ?? 'TBD',
+                    ] : null,
+                    'winner' => $match['winner_user_id'] ? [
+                        'id' => (int)$match['winner_user_id'],
+                        'name' => $match['winner_name'] ?? null,
+                    ] : null,
+                ],
+            ];
+            if ((int)$match['round'] === 1) {
+                $teams[] = [
+                    $match['player1_name'] ?? 'TBD',
+                    $match['player2_name'] ?? 'TBD',
+                ];
+            }
+        }
+    }
+
+    if (empty($teams)) {
+        $players = tournament_players($tournamentId);
+        $pairs = single_elimination_pairs($players);
+        foreach ($pairs as $pair) {
+            $teams[] = [$pair['player1']['name'], $pair['player2']['name']];
+        }
+        $matchesInRound = count($teams);
+        while ($matchesInRound > 0) {
+            $round = [];
+            for ($i = 0; $i < $matchesInRound; $i++) {
+                $round[] = [null, null, [
+                    'match_id' => null,
+                    'round' => count($rounds),
+                    'match' => $i,
+                    'player1' => null,
+                    'player2' => null,
+                    'winner' => null,
+                ]];
+            }
+            $rounds[] = $round;
+            if ($matchesInRound === 1) {
+                break;
+            }
+            $matchesInRound = (int)ceil($matchesInRound / 2);
+        }
+    }
+
+    ksort($rounds);
+    $rounds = array_values(array_map(function (array $round) {
+        return array_values($round);
+    }, $rounds));
+
+    return ['teams' => $teams, 'results' => $rounds];
+}
+
+function next_power_of_two(int $number): int
+{
+    if ($number < 1) {
+        return 1;
+    }
+    $power = 1;
+    while ($power < $number) {
+        $power <<= 1;
+    }
+    return $power;
+}
+
+function single_elimination_pairs(array $players): array
+{
+    $slots = array_map(static function ($player) {
+        return [
+            'id' => isset($player['user_id']) ? (int)$player['user_id'] : null,
+            'name' => $player['username'] ?? 'TBD',
+        ];
+    }, $players);
+
+    $slotCount = max(2, next_power_of_two(count($slots)));
+    $byeMatches = $slotCount - count($slots);
+    $pairs = [];
+    $index = 0;
+
+    for ($i = 0; $i < $slotCount / 2; $i++) {
+        $team1 = $slots[$index] ?? null;
+        if ($team1 !== null) {
+            $index++;
+        }
+        if ($team1 === null) {
+            $team1 = ['id' => null, 'name' => 'BYE'];
+        }
+
+        if ($byeMatches > 0) {
+            $team2 = ['id' => null, 'name' => 'BYE'];
+            $byeMatches--;
+        } else {
+            $team2 = $slots[$index] ?? null;
+            if ($team2 !== null) {
+                $index++;
+            }
+            if ($team2 === null) {
+                $team2 = ['id' => null, 'name' => 'BYE'];
+            }
+        }
+
+        $pairs[] = [
+            'player1' => $team1,
+            'player2' => $team2,
+        ];
+    }
+
+    return $pairs;
+}
+
+function auto_advance_byes(int $tournamentId): void
+{
+    $matches = tournament_matches($tournamentId);
+    foreach ($matches as $match) {
+        if ($match['stage'] !== 'main' || (int)$match['round'] !== 1) {
+            continue;
+        }
+        $p1 = $match['player1_user_id'] ? (int)$match['player1_user_id'] : null;
+        $p2 = $match['player2_user_id'] ? (int)$match['player2_user_id'] : null;
+        if ($p1 && !$p2) {
+            record_match_result($tournamentId, (int)$match['id'], $p1);
+        } elseif ($p2 && !$p1) {
+            record_match_result($tournamentId, (int)$match['id'], $p2);
+        }
+    }
 }
 
 function seed_matches_for_tournament(int $tournamentId): void
@@ -174,6 +325,39 @@ function seed_matches_for_tournament(int $tournamentId): void
         return;
     }
 
+    if ($tournament['type'] === 'single') {
+        $pairs = single_elimination_pairs($players);
+        $round = 1;
+        $matchesInRound = count($pairs);
+        $insert = db()->prepare('INSERT INTO tournament_matches (tournament_id, stage, round, match_index, player1_user_id, player2_user_id) VALUES (:tid, :stage, :round, :index, :p1, :p2)');
+        while ($matchesInRound >= 1) {
+            for ($i = 0; $i < $matchesInRound; $i++) {
+                if ($round === 1) {
+                    $p1 = $pairs[$i]['player1']['id'];
+                    $p2 = $pairs[$i]['player2']['id'];
+                } else {
+                    $p1 = null;
+                    $p2 = null;
+                }
+                $insert->execute([
+                    ':tid' => $tournamentId,
+                    ':stage' => 'main',
+                    ':round' => $round,
+                    ':index' => $i + 1,
+                    ':p1' => $p1,
+                    ':p2' => $p2,
+                ]);
+            }
+            if ($matchesInRound === 1) {
+                break;
+            }
+            $matchesInRound = (int)ceil($matchesInRound / 2);
+            $round++;
+        }
+        auto_advance_byes($tournamentId);
+        return;
+    }
+
     $matches = array_chunk($players, 2);
     foreach ($matches as $index => $pair) {
         $p1 = $pair[0]['user_id'] ?? null;
@@ -190,32 +374,118 @@ function seed_matches_for_tournament(int $tournamentId): void
     }
 }
 
-function record_match_result(int $tournamentId, int $matchId, int $score1, int $score2, ?int $winnerId): void
+function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): void
 {
-    $stmt = db()->prepare('UPDATE tournament_matches SET score1 = :s1, score2 = :s2, winner_user_id = :winner WHERE id = :id AND tournament_id = :tid');
-    $stmt->execute([
+    $pdo = db();
+    $matchStmt = $pdo->prepare('SELECT * FROM tournament_matches WHERE id = :id AND tournament_id = :tid');
+    $matchStmt->execute([':id' => $matchId, ':tid' => $tournamentId]);
+    $match = $matchStmt->fetch();
+    if (!$match) {
+        return;
+    }
+
+    $score1 = null;
+    $score2 = null;
+    if ($winnerId) {
+        $isPlayer1 = (int)($match['player1_user_id'] ?? 0) === $winnerId;
+        $isPlayer2 = (int)($match['player2_user_id'] ?? 0) === $winnerId;
+        if (!$isPlayer1 && !$isPlayer2) {
+            return;
+        }
+        $score1 = $isPlayer1 ? 1 : 0;
+        $score2 = $isPlayer2 ? 1 : 0;
+    }
+
+    $update = $pdo->prepare('UPDATE tournament_matches SET score1 = :s1, score2 = :s2, winner_user_id = :winner WHERE id = :id AND tournament_id = :tid');
+    $update->execute([
         ':s1' => $score1,
         ':s2' => $score2,
         ':winner' => $winnerId,
         ':id' => $matchId,
         ':tid' => $tournamentId,
     ]);
-    $match = db()->prepare('SELECT player1_user_id, player2_user_id FROM tournament_matches WHERE id = :id AND tournament_id = :tid');
-    $match->execute([':id' => $matchId, ':tid' => $tournamentId]);
-    $players = $match->fetch();
-    $updated = [];
-    if ($players) {
-        foreach (['player1_user_id', 'player2_user_id'] as $key) {
-            if (!empty($players[$key])) {
-                $userId = (int)$players[$key];
-                update_user_stat($userId);
-                $updated[] = $userId;
-            }
+
+    propagate_winner_to_next_match($tournamentId, $match, $winnerId);
+    refresh_player_stats_for_match($match, $winnerId);
+    clear_following_results($tournamentId, $match['stage'], (int)$match['round'], (int)$match['match_index']);
+    update_tournament_json($tournamentId, json_encode(generate_bracket_structure($tournamentId)), null);
+    touch_tournament($tournamentId);
+}
+
+function refresh_player_stats_for_match(array $match, ?int $winnerId): void
+{
+    $players = [];
+    foreach (['player1_user_id', 'player2_user_id'] as $key) {
+        if (!empty($match[$key])) {
+            $players[] = (int)$match[$key];
         }
     }
-    if ($winnerId && !in_array($winnerId, $updated, true)) {
-        update_user_stat($winnerId);
+    if ($winnerId) {
+        $players[] = $winnerId;
     }
+    foreach (array_unique($players) as $playerId) {
+        update_user_stat($playerId);
+    }
+}
+
+function propagate_winner_to_next_match(int $tournamentId, array $match, ?int $winnerId): void
+{
+    if (!$winnerId) {
+        $slotColumn = ((int)$match['match_index'] % 2 === 1) ? 'player1_user_id' : 'player2_user_id';
+        $stmt = db()->prepare("UPDATE tournament_matches SET {$slotColumn} = NULL WHERE tournament_id = :tid AND stage = :stage AND round = :round AND match_index = :index");
+        $stmt->execute([
+            ':tid' => $tournamentId,
+            ':stage' => $match['stage'],
+            ':round' => (int)$match['round'] + 1,
+            ':index' => (int)ceil(((int)$match['match_index']) / 2),
+        ]);
+        return;
+    }
+
+    $nextRound = (int)$match['round'] + 1;
+    $nextIndex = (int)ceil(((int)$match['match_index']) / 2);
+    $stmt = db()->prepare('SELECT id, player1_user_id, player2_user_id FROM tournament_matches WHERE tournament_id = :tid AND stage = :stage AND round = :round AND match_index = :index');
+    $stmt->execute([
+        ':tid' => $tournamentId,
+        ':stage' => $match['stage'],
+        ':round' => $nextRound,
+        ':index' => $nextIndex,
+    ]);
+    $next = $stmt->fetch();
+    if (!$next) {
+        return;
+    }
+
+    $slotColumn = ((int)$match['match_index'] % 2 === 1) ? 'player1_user_id' : 'player2_user_id';
+    $update = db()->prepare("UPDATE tournament_matches SET {$slotColumn} = :winner, score1 = NULL, score2 = NULL, winner_user_id = NULL WHERE id = :id");
+    $update->execute([
+        ':winner' => $winnerId,
+        ':id' => $next['id'],
+    ]);
+}
+
+function clear_following_results(int $tournamentId, string $stage, int $round, int $matchIndex): void
+{
+    $nextRound = $round + 1;
+    $nextIndex = (int)ceil($matchIndex / 2);
+    $stmt = db()->prepare('SELECT id, stage, round, match_index FROM tournament_matches WHERE tournament_id = :tid AND stage = :stage AND round = :round AND match_index = :index');
+    $stmt->execute([
+        ':tid' => $tournamentId,
+        ':stage' => $stage,
+        ':round' => $nextRound,
+        ':index' => $nextIndex,
+    ]);
+    $next = $stmt->fetch();
+    if (!$next) {
+        return;
+    }
+    db()->prepare('UPDATE tournament_matches SET score1 = NULL, score2 = NULL, winner_user_id = NULL WHERE id = :id')->execute([':id' => $next['id']]);
+    clear_following_results($tournamentId, $stage, (int)$next['round'], (int)$next['match_index']);
+}
+
+function touch_tournament(int $tournamentId): void
+{
+    db()->prepare('UPDATE tournaments SET updated_at = NOW() WHERE id = :id')->execute([':id' => $tournamentId]);
 }
 
 function save_snapshot(int $tournamentId, string $type, array $payload, int $userId): void

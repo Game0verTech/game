@@ -24,31 +24,276 @@ $(function () {
         return null;
     }
 
+    function escapeHtml(value) {
+        return $('<div/>').text(value || '').html();
+    }
+
+    function isMatchNode(node) {
+        return Array.isArray(node) && node.length >= 2 && !Array.isArray(node[0]) && !Array.isArray(node[1]);
+    }
+
+    function flattenResults(results) {
+        var matches = [];
+        (function walk(node) {
+            if (!Array.isArray(node)) {
+                return;
+            }
+            if (isMatchNode(node)) {
+                matches.push({
+                    score1: node[0],
+                    score2: node[1],
+                    meta: node[2] || {},
+                });
+                return;
+            }
+            node.forEach(function (child) {
+                walk(child);
+            });
+        })(results || []);
+        return matches;
+    }
+
+    function computeStatusLabel(item, slotIndex, meta) {
+        var score1 = parseInt(item.score1, 10);
+        var score2 = parseInt(item.score2, 10);
+        if (!isNaN(score1) && !isNaN(score2) && score1 !== score2) {
+            if (slotIndex === 0) {
+                return score1 > score2 ? 'WIN' : 'LOSS';
+            }
+            return score2 > score1 ? 'WIN' : 'LOSS';
+        }
+        var winner = meta.winner;
+        if (winner && winner.id) {
+            var playerMeta = slotIndex === 0 ? meta.player1 : meta.player2;
+            if (playerMeta && playerMeta.id === winner.id) {
+                return 'WIN';
+            }
+            if (playerMeta && playerMeta.id) {
+                return 'LOSS';
+            }
+        }
+        var hasPlayer = (slotIndex === 0 && meta.player1 && meta.player1.id) || (slotIndex === 1 && meta.player2 && meta.player2.id);
+        return hasPlayer ? 'READY' : 'TBD';
+    }
+
+    function tagBracketMatches(container, data) {
+        var matches = flattenResults(data && data.results ? data.results : []);
+        var matchNodes = container.find('.jQBracket .match');
+        matchNodes.each(function (index) {
+            var info = matches[index] || {};
+            var meta = info.meta || {};
+            var matchId = meta.match_id || meta.matchId || null;
+            var matchEl = $(this);
+            if (matchId) {
+                matchEl.attr('data-match-id', matchId);
+            } else {
+                matchEl.removeAttr('data-match-id');
+            }
+            matchEl.data('matchMeta', meta);
+            var teams = matchEl.find('.team');
+            teams.each(function (slotIndex) {
+                var team = $(this);
+                var playerMeta = slotIndex === 0 ? meta.player1 : meta.player2;
+                if (playerMeta && playerMeta.id) {
+                    team.attr('data-player-id', playerMeta.id);
+                } else {
+                    team.removeAttr('data-player-id');
+                }
+                team.attr('data-slot', slotIndex + 1);
+                var label = computeStatusLabel(info, slotIndex, meta);
+                if (label) {
+                    team.attr('data-status-label', label);
+                } else {
+                    team.removeAttr('data-status-label');
+                }
+            });
+        });
+    }
+
+    function updateMatchSummary(container, data) {
+        var tournamentId = container.data('tournamentId');
+        if (!tournamentId) {
+            return;
+        }
+        var table = $('.js-match-summary[data-tournament-id="' + tournamentId + '"]');
+        if (!table.length) {
+            return;
+        }
+        var rows = table.find('tbody tr');
+        if (!rows.length) {
+            return;
+        }
+        var matches = flattenResults(data && data.results ? data.results : []);
+        var map = {};
+        matches.forEach(function (item) {
+            var meta = item.meta || {};
+            if (!meta.match_id) {
+                return;
+            }
+            var player1 = meta.player1 && meta.player1.name ? meta.player1.name : 'TBD';
+            var player2 = meta.player2 && meta.player2.name ? meta.player2.name : 'TBD';
+            var winnerName = meta.winner && meta.winner.name ? meta.winner.name : '';
+            var score1 = parseInt(item.score1, 10);
+            var score2 = parseInt(item.score2, 10);
+            if (!winnerName && !isNaN(score1) && !isNaN(score2)) {
+                if (score1 > score2 && meta.player1) {
+                    winnerName = meta.player1.name;
+                } else if (score2 > score1 && meta.player2) {
+                    winnerName = meta.player2.name;
+                }
+            }
+            map[meta.match_id] = {
+                players: escapeHtml(player1) + ' <span class="versus">vs</span> ' + escapeHtml(player2),
+                winner: winnerName ? winnerName : 'TBD',
+            };
+        });
+        rows.each(function () {
+            var row = $(this);
+            var matchId = parseInt(row.data('matchId'), 10);
+            if (!matchId || !map[matchId]) {
+                return;
+            }
+            row.find('td').eq(3).html(map[matchId].players);
+            row.find('td').eq(4).text(map[matchId].winner);
+        });
+    }
+
+    function renderBracket(container, data, mode) {
+        container.empty();
+        container.removeData('bracket');
+        var options = {
+            init: data,
+            teamWidth: 160,
+            scoreWidth: 0,
+            matchMargin: 20,
+            roundMargin: 60,
+            disableToolbar: true,
+            disableTeamEdit: true,
+            save: function () {}
+        };
+        container.bracket(options);
+        tagBracketMatches(container, data);
+        container.data('bracketState', JSON.stringify(data));
+        container.data('bracketData', data);
+        if (mode === 'admin') {
+            updateMatchSummary(container, data);
+        }
+    }
+
+    function fetchBracket(container, tournamentId, mode) {
+        $.getJSON('/api/bracket.php', { tournament_id: tournamentId })
+            .done(function (response) {
+                if (!response || !response.bracket) {
+                    return;
+                }
+                var serialized = JSON.stringify(response.bracket);
+                if (container.data('bracketState') !== serialized) {
+                    renderBracket(container, response.bracket, mode);
+                }
+            })
+            .fail(function (xhr) {
+                console.error('Failed to refresh bracket', xhr);
+            });
+    }
+
+    function shouldPoll(container, mode) {
+        if (mode === 'admin') {
+            return true;
+        }
+        var liveAttr = container.data('live');
+        return liveAttr === true || liveAttr === 1 || liveAttr === '1';
+    }
+
+    function setupPolling(container, tournamentId, mode) {
+        if (!tournamentId || !shouldPoll(container, mode)) {
+            return;
+        }
+        var interval = parseInt(container.data('refreshInterval'), 10);
+        if (!interval || interval < 3000) {
+            interval = 5000;
+        }
+        var existing = container.data('poller');
+        if (existing) {
+            clearInterval(existing);
+        }
+        var poller = window.setInterval(function () {
+            fetchBracket(container, tournamentId, mode);
+        }, interval);
+        container.data('poller', poller);
+    }
+
+    function markWinner(container, tournamentId, matchId, playerId, token) {
+        if (!token) {
+            console.warn('Missing CSRF token for bracket update.');
+            return;
+        }
+        container.addClass('is-updating');
+        $.ajax({
+            method: 'POST',
+            url: '/api/tournaments.php',
+            dataType: 'json',
+            data: {
+                action: 'set_match_winner',
+                _token: token,
+                tournament_id: tournamentId,
+                match_id: matchId,
+                winner_user_id: playerId,
+            },
+        })
+            .done(function (response) {
+                if (response && response.bracket) {
+                    renderBracket(container, response.bracket, 'admin');
+                }
+            })
+            .fail(function (xhr) {
+                var message = 'Unable to update match.';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    message = xhr.responseJSON.error;
+                }
+                window.alert(message);
+            })
+            .always(function () {
+                container.removeClass('is-updating');
+            });
+    }
+
+    function enableAdminControls(container, mode) {
+        if (mode !== 'admin') {
+            return;
+        }
+        container.off('contextmenu.bracket').on('contextmenu.bracket', '.team', function (event) {
+            event.preventDefault();
+            var team = $(this);
+            var playerId = parseInt(team.attr('data-player-id'), 10);
+            if (!playerId) {
+                return;
+            }
+            var matchEl = team.closest('.match');
+            var matchId = parseInt(matchEl.attr('data-match-id'), 10);
+            if (!matchId) {
+                return;
+            }
+            var playerName = $.trim(team.find('.label').text()) || 'this player';
+            if (!window.confirm('Mark ' + playerName + ' as the winner?')) {
+                return;
+            }
+            var tournamentId = container.data('tournamentId');
+            var token = container.data('token');
+            markWinner(container, tournamentId, matchId, playerId, token);
+        });
+    }
+
     $('.bracket-container').each(function () {
         var container = $(this);
         var data = parseJsonPayload(container, 'bracket');
-        var mode = container.data('mode');
-        var field = container.data('target');
         if (!data) {
             return;
         }
-        var readOnly = mode !== 'admin';
-        var options = {
-            init: data,
-            teamWidth: 120,
-            matchMargin: 10,
-            disableToolbar: readOnly,
-            disableTeamEdit: readOnly,
-            save: function () {}
-        };
-
-        if (!readOnly && field) {
-            options.save = function (updatedData) {
-                $('#' + field).val(JSON.stringify(updatedData));
-            };
-        }
-
-        container.bracket(options);
+        var mode = container.data('mode') || 'viewer';
+        renderBracket(container, data, mode);
+        enableAdminControls(container, mode);
+        var tournamentId = container.data('tournamentId');
+        setupPolling(container, tournamentId, mode);
     });
 
     $('.group-container').each(function () {
