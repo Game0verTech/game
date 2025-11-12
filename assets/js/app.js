@@ -28,6 +28,90 @@ $(function () {
         return $('<div/>').text(value || '').html();
     }
 
+    var bracketContextMenu = null;
+    var bracketContextMenuAction = null;
+    var bracketContextPayload = null;
+
+    function hideContextMenu() {
+        if (!bracketContextMenu) {
+            bracketContextPayload = null;
+            return;
+        }
+        if (bracketContextPayload && bracketContextPayload.team && bracketContextPayload.team.length) {
+            bracketContextPayload.team.removeClass('is-context-target');
+        }
+        bracketContextPayload = null;
+        bracketContextMenu.removeClass('is-visible').attr('aria-hidden', 'true');
+    }
+
+    function getContextMenu() {
+        if (bracketContextMenu) {
+            return bracketContextMenu;
+        }
+        bracketContextMenu = $('<div class="bracket-context-menu" role="menu" aria-hidden="true"></div>');
+        bracketContextMenuAction = $('<button type="button" class="bracket-context-menu__item"></button>');
+        bracketContextMenu.append(bracketContextMenuAction);
+        bracketContextMenu.on('contextmenu', function (event) {
+            event.preventDefault();
+        });
+        $('body').append(bracketContextMenu);
+
+        bracketContextMenuAction.on('click', function () {
+            var payload = bracketContextPayload;
+            hideContextMenu();
+            if (!payload) {
+                return;
+            }
+            markWinner(payload.container, payload.tournamentId, payload.matchId, payload.playerId, payload.token);
+        });
+
+        $(document).on('click.bracketContext', function (event) {
+            if (!bracketContextMenu || !bracketContextMenu.hasClass('is-visible')) {
+                return;
+            }
+            if ($(event.target).closest('.bracket-context-menu').length) {
+                return;
+            }
+            hideContextMenu();
+        });
+
+        $(document).on('keydown.bracketContext', function (event) {
+            if (event.key === 'Escape') {
+                hideContextMenu();
+            }
+        });
+
+        $(window).on('resize.bracketContext scroll.bracketContext', hideContextMenu);
+        $(document).on('wheel.bracketContext', hideContextMenu);
+
+        return bracketContextMenu;
+    }
+
+    function positionContextMenu(menu, pageX, pageY) {
+        if (!menu || !menu.length) {
+            return;
+        }
+
+        var scrollLeft = $(window).scrollLeft();
+        var scrollTop = $(window).scrollTop();
+        var viewportWidth = $(window).width();
+        var viewportHeight = $(window).height();
+        var minLeft = scrollLeft + 12;
+        var minTop = scrollTop + 12;
+
+        menu.css({ left: pageX + 'px', top: pageY + 'px' });
+        menu.addClass('is-visible').attr('aria-hidden', 'false');
+
+        var menuWidth = menu.outerWidth();
+        var menuHeight = menu.outerHeight();
+        var maxLeft = Math.max(minLeft, scrollLeft + viewportWidth - menuWidth - 12);
+        var maxTop = Math.max(minTop, scrollTop + viewportHeight - menuHeight - 12);
+        var adjustedLeft = Math.min(Math.max(pageX, minLeft), maxLeft);
+        var adjustedTop = Math.min(Math.max(pageY, minTop), maxTop);
+
+        menu.css({ left: adjustedLeft + 'px', top: adjustedTop + 'px' });
+    }
+
     function isMatchNode(node) {
         return Array.isArray(node) && node.length >= 2 && !Array.isArray(node[0]) && !Array.isArray(node[1]);
     }
@@ -188,6 +272,8 @@ $(function () {
             return;
         }
 
+        hideContextMenu();
+
         var serialized = JSON.stringify(data);
         var fallbackMarkup = container.children().detach();
         var fallbackState = container.data('bracketState');
@@ -196,7 +282,7 @@ $(function () {
             init: data,
             teamWidth: 220,
             scoreWidth: 0,
-            matchMargin: 36,
+            matchMargin: 28,
             roundMargin: 120,
             disableToolbar: true,
             disableTeamEdit: true,
@@ -310,8 +396,10 @@ $(function () {
         if (mode !== 'admin') {
             return;
         }
+        container.off('scroll.bracketContextMenu').on('scroll.bracketContextMenu', hideContextMenu);
         container.off('contextmenu.bracket').on('contextmenu.bracket', '.team', function (event) {
             event.preventDefault();
+            hideContextMenu();
             var team = $(this);
             var playerId = parseInt(team.attr('data-player-id'), 10);
             if (!playerId) {
@@ -322,13 +410,29 @@ $(function () {
             if (!matchId) {
                 return;
             }
-            var playerName = $.trim(team.find('.label').text()) || 'this player';
-            if (!window.confirm('Mark ' + playerName + ' as the winner?')) {
-                return;
-            }
             var tournamentId = container.data('tournamentId');
             var token = container.data('token');
-            markWinner(container, tournamentId, matchId, playerId, token);
+            if (!tournamentId || !token) {
+                return;
+            }
+            var playerName = $.trim(team.find('.label').text()) || 'this player';
+            var menu = getContextMenu();
+            bracketContextPayload = {
+                container: container,
+                tournamentId: tournamentId,
+                matchId: matchId,
+                playerId: playerId,
+                token: token,
+                team: team,
+            };
+            bracketContextMenuAction.text('Mark ' + playerName + ' as winner');
+            team.addClass('is-context-target');
+            positionContextMenu(menu, event.pageX, event.pageY);
+            if (bracketContextMenuAction && bracketContextMenuAction.length) {
+                window.requestAnimationFrame(function () {
+                    bracketContextMenuAction.trigger('focus');
+                });
+            }
         });
     }
 
