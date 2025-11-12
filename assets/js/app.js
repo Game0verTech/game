@@ -1,55 +1,63 @@
 $(function () {
+    function parseJsonPayload(container, key) {
+        var cached = container.data(key);
+        if (cached && typeof cached !== 'string') {
+            return cached;
+        }
+
+        var raw = typeof cached === 'string' ? cached : container.attr('data-' + key);
+        if (!raw || typeof raw !== 'string') {
+            return null;
+        }
+
+        try {
+            return JSON.parse(raw);
+        } catch (e) {
+            try {
+                var decoded = $('<textarea/>').html(raw).text();
+                return JSON.parse(decoded);
+            } catch (inner) {
+                console.error('Invalid ' + key + ' JSON', inner);
+            }
+        }
+
+        return null;
+    }
+
     $('.bracket-container').each(function () {
         var container = $(this);
-        var data = container.data('bracket');
+        var data = parseJsonPayload(container, 'bracket');
         var mode = container.data('mode');
         var field = container.data('target');
         if (!data) {
             return;
         }
-        if (typeof data === 'string') {
-            try {
-                data = JSON.parse(data);
-            } catch (e) {
-                console.error('Invalid bracket JSON', e);
-                return;
-            }
+        var readOnly = mode !== 'admin';
+        var options = {
+            init: data,
+            teamWidth: 120,
+            matchMargin: 10,
+            disableToolbar: readOnly,
+            disableTeamEdit: readOnly,
+            save: function () {}
+        };
+
+        if (!readOnly && field) {
+            options.save = function (updatedData) {
+                $('#' + field).val(JSON.stringify(updatedData));
+            };
         }
-        if (mode === 'admin') {
-            container.bracket({
-                init: data,
-                save: function (updatedData) {
-                    if (field) {
-                        $('#' + field).val(JSON.stringify(updatedData));
-                    }
-                }
-            });
-        } else {
-            container.bracket({
-                init: data,
-                save: function () {},
-                disableToolbar: true,
-                teamWidth: 120,
-                matchMargin: 10
-            });
-        }
+
+        container.bracket(options);
     });
 
     $('.group-container').each(function () {
         var container = $(this);
-        var data = container.data('group');
+        var data = parseJsonPayload(container, 'group');
         var mode = container.data('mode');
         var field = container.data('target');
         if (!data) {
             return;
-        }
-        if (typeof data === 'string') {
-            try {
-                data = JSON.parse(data);
-            } catch (e) {
-                console.error('Invalid group JSON', e);
-                return;
-            }
         }
         var options = { data: data };
         if (mode !== 'admin') {
