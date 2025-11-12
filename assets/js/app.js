@@ -28,148 +28,78 @@ $(function () {
         return $('<div/>').text(value || '').html();
     }
 
-    var bracketContextMenu = null;
-    var bracketContextMenuAction = null;
-    var bracketContextPayload = null;
-
-    function hideContextMenu() {
-        if (!bracketContextMenu) {
-            bracketContextPayload = null;
+    function clearTeamHighlight(team) {
+        if (!team || !team.length) {
             return;
         }
-        if (bracketContextPayload && bracketContextPayload.team && bracketContextPayload.team.length) {
-            bracketContextPayload.team.removeClass('is-context-target');
-        }
-        bracketContextPayload = null;
-        bracketContextMenu.removeClass('is-visible').attr('aria-hidden', 'true');
+        window.setTimeout(function () {
+            team.removeClass('is-context-target');
+        }, 160);
     }
 
-    function getContextMenu() {
-        if (bracketContextMenu) {
-            return bracketContextMenu;
-        }
-        bracketContextMenu = $('<div class="bracket-context-menu" role="menu" aria-hidden="true"></div>');
-        bracketContextMenuAction = $('<button type="button" class="bracket-context-menu__item"></button>');
-        bracketContextMenu.append(bracketContextMenuAction);
-        bracketContextMenu.on('contextmenu', function (event) {
-            event.preventDefault();
-        });
-        $('body').append(bracketContextMenu);
-
-        bracketContextMenuAction.on('click', function () {
-            var payload = bracketContextPayload;
-            hideContextMenu();
-            if (!payload) {
-                return;
-            }
-            markWinner(payload.container, payload.tournamentId, payload.matchId, payload.playerId, payload.token);
-        });
-
-        $(document).on('click.bracketContext', function (event) {
-            if (!bracketContextMenu || !bracketContextMenu.hasClass('is-visible')) {
-                return;
-            }
-            if ($(event.target).closest('.bracket-context-menu').length) {
-                return;
-            }
-            hideContextMenu();
-        });
-
-        $(document).on('keydown.bracketContext', function (event) {
-            if (event.key === 'Escape') {
-                hideContextMenu();
-            }
-        });
-
-        $(window).on('resize.bracketContext scroll.bracketContext', hideContextMenu);
-        $(document).on('wheel.bracketContext', hideContextMenu);
-
-        return bracketContextMenu;
-    }
-
-    function positionContextMenu(menu, pageX, pageY) {
-        if (!menu || !menu.length) {
-            return;
-        }
-
-        var scrollLeft = $(window).scrollLeft();
-        var scrollTop = $(window).scrollTop();
-        var viewportWidth = $(window).width();
-        var viewportHeight = $(window).height();
-        var minLeft = scrollLeft + 12;
-        var minTop = scrollTop + 12;
-
-        menu.css({ left: pageX + 'px', top: pageY + 'px' });
-        menu.addClass('is-visible').attr('aria-hidden', 'false');
-
-        var menuWidth = menu.outerWidth();
-        var menuHeight = menu.outerHeight();
-        var maxLeft = Math.max(minLeft, scrollLeft + viewportWidth - menuWidth - 12);
-        var maxTop = Math.max(minTop, scrollTop + viewportHeight - menuHeight - 12);
-        var adjustedLeft = Math.min(Math.max(pageX, minLeft), maxLeft);
-        var adjustedTop = Math.min(Math.max(pageY, minTop), maxTop);
-
-        menu.css({ left: adjustedLeft + 'px', top: adjustedTop + 'px' });
-    }
-
-    function openTeamAction(container, team, coords) {
-        hideContextMenu();
-
+    function extractTeamPayload(container, team) {
         if (!team || !team.length || !team.hasClass('is-selectable')) {
-            return;
-        }
-
-        var playerId = parseInt(team.attr('data-player-id'), 10);
-        if (!playerId) {
-            return;
+            return null;
         }
 
         var matchEl = team.closest('.bracket-match');
         var matchId = parseInt(matchEl.attr('data-match-id'), 10);
-        if (!matchId) {
-            return;
-        }
-
+        var playerId = parseInt(team.attr('data-player-id'), 10);
         var tournamentId = container.data('tournamentId');
         var token = container.data('token');
-        if (!tournamentId || !token) {
+
+        if (!matchId || !playerId || !tournamentId || !token) {
+            return null;
+        }
+
+        var roundIndex = parseInt(matchEl.attr('data-round-index'), 10);
+        var matchIndex = parseInt(matchEl.attr('data-match-index'), 10);
+        var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
+
+        return {
+            container: container,
+            matchId: matchId,
+            playerId: playerId,
+            tournamentId: tournamentId,
+            token: token,
+            playerName: playerName,
+            roundIndex: isNaN(roundIndex) ? null : roundIndex,
+            matchIndex: isNaN(matchIndex) ? null : matchIndex,
+            team: team,
+        };
+    }
+
+    function confirmWinnerSelection(payload) {
+        if (!payload) {
+            return false;
+        }
+
+        var segments = ['Mark ' + payload.playerName + ' as winner?'];
+        if (payload.roundIndex !== null) {
+            segments.push('Round ' + (payload.roundIndex + 1));
+        }
+        if (payload.matchIndex !== null) {
+            segments.push('Match ' + (payload.matchIndex + 1));
+        }
+
+        var message = segments.join(' • ');
+        return window.confirm(message);
+    }
+
+    function requestWinnerSelection(container, team) {
+        var payload = extractTeamPayload(container, team);
+        if (!payload) {
             return;
         }
 
-        var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
-        var menu = getContextMenu();
-        bracketContextPayload = {
-            container: container,
-            tournamentId: tournamentId,
-            matchId: matchId,
-            playerId: playerId,
-            token: token,
-            team: team,
-        };
-
-        bracketContextMenuAction.text('Mark ' + playerName + ' as winner');
         team.addClass('is-context-target');
-
-        var pageX = coords && typeof coords.pageX === 'number' ? coords.pageX : null;
-        var pageY = coords && typeof coords.pageY === 'number' ? coords.pageY : null;
-        if (pageX === null || pageY === null) {
-            var offset = team.offset();
-            if (offset) {
-                pageX = offset.left + team.outerWidth();
-                pageY = offset.top + team.outerHeight() / 2;
-            } else {
-                pageX = 0;
-                pageY = 0;
-            }
+        if (!confirmWinnerSelection(payload)) {
+            clearTeamHighlight(team);
+            return;
         }
 
-        positionContextMenu(menu, pageX, pageY);
-
-        if (bracketContextMenuAction && bracketContextMenuAction.length) {
-            window.requestAnimationFrame(function () {
-                bracketContextMenuAction.trigger('focus');
-            });
-        }
+        markWinner(payload.container, payload.tournamentId, payload.matchId, payload.playerId, payload.token);
+        clearTeamHighlight(team);
     }
 
     function isMatchNode(node) {
@@ -551,7 +481,6 @@ $(function () {
             return;
         }
 
-        hideContextMenu();
         detachBracketObservers(container);
 
         var serialized = JSON.stringify(data);
@@ -747,10 +676,9 @@ $(function () {
         if (mode !== 'admin') {
             return;
         }
-        container.off('scroll.bracketContextMenu').on('scroll.bracketContextMenu', hideContextMenu);
         container.off('contextmenu.bracketAction').on('contextmenu.bracketAction', '.team', function (event) {
             event.preventDefault();
-            openTeamAction(container, $(this), event);
+            requestWinnerSelection(container, $(this));
         });
 
         container.off('click.bracketAction').on('click.bracketAction', '.team', function (event) {
@@ -758,7 +686,7 @@ $(function () {
                 return;
             }
             event.preventDefault();
-            openTeamAction(container, $(this), event);
+            requestWinnerSelection(container, $(this));
         });
 
         container.off('keydown.bracketAction').on('keydown.bracketAction', '.team', function (event) {
@@ -766,19 +694,15 @@ $(function () {
                 return;
             }
             event.preventDefault();
-            openTeamAction(container, $(this), {
-                pageX: null,
-                pageY: null,
-            });
+            requestWinnerSelection(container, $(this));
         });
 
         container.off('touchend.bracketAction').on('touchend.bracketAction', '.team', function (event) {
             var touch = event.originalEvent && event.originalEvent.changedTouches ? event.originalEvent.changedTouches[0] : null;
-            var coords = touch
-                ? { pageX: touch.pageX, pageY: touch.pageY }
-                : { pageX: event.pageX || null, pageY: event.pageY || null };
-            event.preventDefault();
-            openTeamAction(container, $(this), coords);
+            if (touch) {
+                event.preventDefault();
+            }
+            requestWinnerSelection(container, $(this));
         });
     }
 

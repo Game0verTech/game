@@ -587,48 +587,6 @@ button.danger:hover,
     font-style: italic;
 }
 
-.bracket-context-menu {
-    position: absolute;
-    z-index: 9999;
-    min-width: 200px;
-    padding: 8px;
-    border-radius: 12px;
-    border: 1px solid rgba(107, 139, 194, 0.35);
-    background: linear-gradient(145deg, rgba(19, 28, 44, 0.96), rgba(32, 45, 68, 0.96));
-    box-shadow: 0 22px 38px rgba(7, 11, 21, 0.65);
-    opacity: 0;
-    transform: scale(0.97);
-    pointer-events: none;
-    transition: opacity 0.16s ease, transform 0.16s ease;
-}
-
-.bracket-context-menu.is-visible {
-    opacity: 1;
-    transform: scale(1);
-    pointer-events: auto;
-}
-
-.bracket-context-menu__item {
-    width: 100%;
-    padding: 9px 12px;
-    border: none;
-    border-radius: 9px;
-    background: transparent;
-    color: #e6edff;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color 0.16s ease, color 0.16s ease;
-}
-
-.bracket-context-menu__item:hover,
-.bracket-context-menu__item:focus {
-    background: rgba(88, 142, 224, 0.25);
-    color: #ffffff;
-    outline: none;
-}
-
 .bracket-container.is-updating {
     opacity: 0.6;
     pointer-events: none;
