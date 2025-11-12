@@ -1120,6 +1120,26 @@ button.danger:focus-visible,
     z-index: 1;
 }
 
+.bracket-stage {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(16px, 2.5vw, 32px);
+    min-width: max-content;
+}
+
+.bracket-stage__columns {
+    display: flex;
+    gap: clamp(64px, 6vw, 136px);
+    min-width: max-content;
+}
+
+.bracket-stage__title {
+    font-size: 0.92rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(143, 184, 255, 0.72);
+}
+
 .bracket-round {
     position: relative;
     width: clamp(250px, 20vw, 320px);
