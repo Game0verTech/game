@@ -14,6 +14,7 @@ $user = current_user();
     <link rel="stylesheet" href="/assets/vendor/jquery-bracket/jquery.bracket.min.css">
     <link rel="stylesheet" href="/assets/vendor/jquery-group/jquery.group.min.css">
     <script src="/assets/js/jquery.min.js"></script>
+    <script src="/assets/js/handlebars-lite.js"></script>
     <script src="/assets/vendor/jquery-bracket/jquery.bracket.min.js"></script>
     <script src="/assets/vendor/jquery-group/jquery.group.min.js"></script>
     <script src="/assets/js/app.js" defer></script>

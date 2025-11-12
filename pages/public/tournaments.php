@@ -61,12 +61,19 @@ $user = current_user();
     <h2>Live Tournaments</h2>
     <?php if ($live): ?>
         <?php foreach ($live as $tournament): ?>
+            <?php $liveBracket = tournament_bracket_snapshot($tournament); ?>
             <div class="tournament-view">
                 <h3><a href="/?page=tournament&id=<?= (int)$tournament['id'] ?>"><?= sanitize($tournament['name']) ?></a></h3>
                 <?php if ($tournament['type'] === 'round-robin' && $tournament['groups_json']): ?>
                     <div class="group-container" data-group='<?= sanitize($tournament['groups_json']) ?>' data-mode="user"></div>
-                <?php elseif ($tournament['bracket_json']): ?>
-                    <div class="bracket-container" data-bracket='<?= sanitize($tournament['bracket_json']) ?>' data-mode="user"></div>
+                <?php elseif ($liveBracket): ?>
+                    <div
+                        class="bracket-container"
+                        data-bracket='<?= sanitize($liveBracket) ?>'
+                        data-mode="user"
+                        data-tournament-id="<?= (int)$tournament['id'] ?>"
+                        data-live="1"
+                    ></div>
                 <?php else: ?>
                     <p>Bracket not yet available.</p>
                 <?php endif; ?>
