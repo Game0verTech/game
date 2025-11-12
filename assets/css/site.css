@@ -575,6 +575,52 @@ button.danger:hover,
     z-index: 0;
 }
 
+.bracket-context-menu {
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+    min-width: 220px;
+    padding: 10px 0;
+    border-radius: 12px;
+    background: rgba(20, 29, 45, 0.98);
+    box-shadow: 0 22px 38px rgba(7, 10, 18, 0.7);
+    border: 1px solid rgba(116, 138, 176, 0.4);
+    opacity: 0;
+    transform: scale(0.96);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+    z-index: 1200;
+}
+
+.bracket-context-menu.is-visible {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+.bracket-context-menu__action {
+    display: block;
+    width: 100%;
+    padding: 10px 18px;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    font-size: 0.92rem;
+    color: rgba(227, 236, 255, 0.92);
+    cursor: pointer;
+    transition: background-color 0.18s ease;
+}
+
+.bracket-context-menu__action:hover,
+.bracket-context-menu__action:focus {
+    outline: none;
+    background: rgba(70, 104, 170, 0.28);
+}
+
+.bracket-context-menu__action + .bracket-context-menu__action {
+    border-top: 1px solid rgba(116, 138, 176, 0.25);
+}
+
 .bracket-connector {
     fill: none;
     stroke: rgba(107, 139, 194, 0.65);
