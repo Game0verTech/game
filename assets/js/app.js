@@ -415,10 +415,20 @@ $(function () {
         team.attr('data-slot', options.slotIndex + 1);
         var label = $('<span class="label"></span>').text(options.name || 'TBD');
         var score = $('<span class="score"></span>');
-        if (options.score !== null && options.score !== undefined) {
-            score.text(options.score);
+        var displayScore = null;
+        if (options.score !== null && options.score !== undefined && options.score !== '') {
+            var numericScore = Number(options.score);
+            if (Number.isNaN(numericScore)) {
+                displayScore = options.score;
+            } else if (numericScore !== 0 && numericScore !== 1) {
+                displayScore = options.score;
+            }
+        }
+        if (displayScore !== null) {
+            score.text(displayScore);
         } else {
             score.text('\u00a0');
+            score.addClass('is-hidden');
         }
         team.append(label, score);
 
@@ -444,7 +454,7 @@ $(function () {
             team.removeAttr('data-status-label');
         }
 
-        team.removeClass('status-win status-loss status-ready status-tbd');
+        team.removeClass('status-win status-loss status-ready status-tbd is-champion');
         if (statusLabel === 'WIN') {
             team.addClass('status-win');
         } else if (statusLabel === 'LOSS') {
@@ -460,6 +470,15 @@ $(function () {
             team.attr('tabindex', '0');
             team.attr('role', 'button');
             team.attr('aria-label', 'Mark ' + (options.playerName || options.name || 'this competitor') + ' as winner');
+        }
+
+        if (options.isChampion) {
+            team.addClass('is-champion');
+            team.attr('data-champion', '1');
+            var crown = $('<span class="champion-icon" role="img" aria-label="Champion" title="Champion"></span>').text('👑');
+            label.append(' ').append(crown);
+        } else {
+            team.removeAttr('data-champion');
         }
 
         return team;
@@ -793,6 +812,9 @@ $(function () {
 
                 var fallbackPair = Array.isArray(teams[matchIndex]) ? teams[matchIndex] : [];
 
+                var isFinalRound = roundIndex === results.length - 1;
+                var winnerMeta = meta && meta.winner && meta.winner.id ? meta.winner : null;
+
                 [0, 1].forEach(function (slotIndex) {
                     var playerMeta = slotIndex === 0 ? meta.player1 : meta.player2;
                     var fallbackName = roundIndex === 0 ? fallbackPair[slotIndex] : null;
@@ -810,6 +832,10 @@ $(function () {
                     }
                     var info = { score1: score1, score2: score2, meta: meta };
                     var statusLabel = computeStatusLabel(info, slotIndex, meta);
+                    var isChampion = false;
+                    if (isFinalRound && winnerMeta && playerMeta && playerMeta.id === winnerMeta.id) {
+                        isChampion = true;
+                    }
                     var team = buildTeamElement({
                         slotIndex: slotIndex,
                         name: name,
@@ -821,6 +847,7 @@ $(function () {
                         matchId: matchId,
                         roundIndex: roundIndex,
                         matchIndex: matchIndex,
+                        isChampion: isChampion,
                     });
                     matchEl.append(team);
                 });

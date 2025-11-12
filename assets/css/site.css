@@ -485,6 +485,23 @@ button.danger:hover,
     color: rgba(182, 197, 232, 0.9);
 }
 
+.bracket-match .team .score.is-hidden {
+    color: transparent;
+}
+
+.bracket-match .team .champion-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 8px;
+    font-size: 1.05rem;
+    text-shadow: 0 0 6px rgba(255, 215, 0, 0.55);
+}
+
+.bracket-match .team.is-champion .label {
+    font-weight: 700;
+}
+
 .bracket-match .team::after {
     content: attr(data-status-label);
     position: absolute;

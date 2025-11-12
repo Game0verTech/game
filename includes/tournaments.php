@@ -42,14 +42,14 @@ function update_tournament_json(int $id, ?string $bracketJson, ?string $groupJso
     $params = [':id' => $id];
 
     if ($bracketJson !== null) {
-        $fields[] = 'bracket_json = CAST(:bracket AS JSON)';
+        $fields[] = 'bracket_json = :bracket';
         $params[':bracket'] = $bracketJson;
     } else {
         $fields[] = 'bracket_json = NULL';
     }
 
     if ($groupJson !== null) {
-        $fields[] = 'groups_json = CAST(:groups AS JSON)';
+        $fields[] = 'groups_json = :groups';
         $params[':groups'] = $groupJson;
     } else {
         $fields[] = 'groups_json = NULL';
@@ -61,7 +61,17 @@ function update_tournament_json(int $id, ?string $bracketJson, ?string $groupJso
 
     $sql = 'UPDATE tournaments SET ' . implode(', ', $fields) . ' WHERE id = :id';
     $stmt = db()->prepare($sql);
-    $stmt->execute($params);
+    foreach ($params as $key => $value) {
+        if ($key === ':id') {
+            $type = PDO::PARAM_INT;
+        } elseif ($value === null) {
+            $type = PDO::PARAM_NULL;
+        } else {
+            $type = PDO::PARAM_STR;
+        }
+        $stmt->bindValue($key, $value, $type);
+    }
+    $stmt->execute();
 }
 
 function tournament_bracket_snapshot(array $tournament): ?string
