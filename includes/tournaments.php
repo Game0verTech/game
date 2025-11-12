@@ -530,6 +530,35 @@ function build_double_elimination_layout(int $slotCount, array $firstRoundPairs 
             'round' => 1,
             'match_index' => 1,
             'sources' => [],
+            'reset' => [
+                'stage' => 'finals',
+                'round' => 2,
+                'match_index' => 1,
+                'trigger_slot' => 2,
+                'winner_slot' => 2,
+                'loser_slot' => 1,
+            ],
+        ],
+    ];
+
+    $layout['finals'][2] = [
+        1 => [
+            'stage' => 'finals',
+            'round' => 2,
+            'match_index' => 1,
+            'sources' => [
+                1 => [
+                    'stage' => 'finals',
+                    'round' => 1,
+                    'match_index' => 1,
+                ],
+                2 => [
+                    'stage' => 'finals',
+                    'round' => 1,
+                    'match_index' => 1,
+                ],
+            ],
+            'if_necessary' => true,
         ],
     ];
 
@@ -803,9 +832,27 @@ function build_double_elimination_bracket(int $tournamentId): array
         ksort($roundMatches);
         foreach ($roundMatches as $matchIndex => $node) {
             $match = $matchMap['finals'][$round][$matchIndex] ?? null;
-            $roundData[] = $buildMatch($match, $node, $round - 1, $matchIndex - 1);
+            $matchMeta = $match ? decode_match_meta($match['meta'] ?? null) : [];
+            $isConditional = !empty($node['if_necessary']) || !empty($matchMeta['if_necessary']);
+            $isVisible = !$isConditional || !empty($matchMeta['visible']);
+            if ($isConditional && !$isVisible) {
+                continue;
+            }
+            $entry = $buildMatch($match, $node, $round - 1, $matchIndex - 1);
+            if ($isConditional) {
+                $entry[2]['if_necessary'] = true;
+                if (!empty($matchMeta['visible'])) {
+                    $entry[2]['visible'] = true;
+                }
+            }
+            if (!empty($matchMeta['reset'])) {
+                $entry[2]['reset'] = $matchMeta['reset'];
+            }
+            $roundData[] = $entry;
         }
-        $results['finals'][] = $roundData;
+        if (!empty($roundData)) {
+            $results['finals'][] = $roundData;
+        }
     }
 
     return [
@@ -1142,6 +1189,13 @@ function seed_double_elimination_matches(int $tournamentId, array $players): voi
                 'stage' => 'finals',
                 'sources' => $node['sources'] ?? [],
             ];
+            if (!empty($node['reset'])) {
+                $meta['reset'] = $node['reset'];
+            }
+            if (!empty($node['if_necessary'])) {
+                $meta['if_necessary'] = true;
+                $meta['visible'] = false;
+            }
             $insert->execute([
                 ':tid' => $tournamentId,
                 ':stage' => 'finals',
@@ -1273,6 +1327,7 @@ function refresh_player_stats_for_match(array $match, ?int $winnerId): void
 function propagate_winner_to_next_match(int $tournamentId, array $match, ?int $winnerId): void
 {
     $meta = decode_match_meta($match['meta'] ?? null);
+    $handled = false;
     if (!empty($meta['next_winner']) || !empty($meta['next_loser'])) {
         $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : null;
         $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : null;
@@ -1292,6 +1347,88 @@ function propagate_winner_to_next_match(int $tournamentId, array $match, ?int $w
             apply_match_destination($tournamentId, $meta['next_winner'] ?? null, null);
             apply_match_destination($tournamentId, $meta['next_loser'] ?? null, null);
         }
+        $handled = true;
+    }
+
+    $resetMeta = [];
+    if (!empty($meta['reset']) && is_array($meta['reset'])) {
+        $resetMeta = $meta['reset'];
+        $handled = true;
+        $triggerSlot = isset($resetMeta['trigger_slot']) ? (int)$resetMeta['trigger_slot'] : 0;
+        $winnerSlot = null;
+        $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : null;
+        $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : null;
+        if ($winnerId) {
+            if ($player1Id && $player1Id === $winnerId) {
+                $winnerSlot = 1;
+            } elseif ($player2Id && $player2Id === $winnerId) {
+                $winnerSlot = 2;
+            }
+        }
+
+        $resetStage = $resetMeta['stage'] ?? ($meta['stage'] ?? 'finals');
+        $resetRound = isset($resetMeta['round']) ? (int)$resetMeta['round'] : null;
+        $resetMatchIndex = isset($resetMeta['match_index']) ? (int)$resetMeta['match_index'] : null;
+        if ($resetStage && $resetRound && $resetMatchIndex) {
+            $resetMatch = find_match_by_coordinates($tournamentId, $resetStage, $resetRound, $resetMatchIndex);
+            if ($resetMatch) {
+                $winnerDestination = $resetMeta['winner_destination'] ?? null;
+                $loserDestination = $resetMeta['loser_destination'] ?? null;
+                if (!$winnerDestination) {
+                    $winnerDestination = [
+                        'stage' => $resetStage,
+                        'round' => $resetRound,
+                        'match_index' => $resetMatchIndex,
+                        'slot' => isset($resetMeta['winner_slot']) ? (int)$resetMeta['winner_slot'] : 2,
+                    ];
+                }
+                if (!$loserDestination) {
+                    $loserDestination = [
+                        'stage' => $resetStage,
+                        'round' => $resetRound,
+                        'match_index' => $resetMatchIndex,
+                        'slot' => isset($resetMeta['loser_slot']) ? (int)$resetMeta['loser_slot'] : 1,
+                    ];
+                }
+
+                if ($winnerId && $winnerSlot !== null && $triggerSlot > 0 && $winnerSlot === $triggerSlot) {
+                    $loserId = null;
+                    if ($player1Id && $player1Id !== $winnerId) {
+                        $loserId = $player1Id;
+                    } elseif ($player2Id && $player2Id !== $winnerId) {
+                        $loserId = $player2Id;
+                    }
+
+                    apply_match_destination($tournamentId, $winnerDestination, $winnerId);
+                    apply_match_destination($tournamentId, $loserDestination, $loserId);
+
+                    $targetMeta = decode_match_meta($resetMatch['meta'] ?? null);
+                    $targetMeta['if_necessary'] = true;
+                    $targetMeta['visible'] = true;
+                    $targetMeta['stage'] = $targetMeta['stage'] ?? $resetStage;
+                    db()->prepare('UPDATE tournament_matches SET meta = :meta WHERE id = :id')
+                        ->execute([
+                            ':meta' => json_encode($targetMeta),
+                            ':id' => $resetMatch['id'],
+                        ]);
+                } else {
+                    db()->prepare('UPDATE tournament_matches SET player1_user_id = NULL, player2_user_id = NULL, score1 = NULL, score2 = NULL, winner_user_id = NULL WHERE id = :id')
+                        ->execute([':id' => $resetMatch['id']]);
+                    $targetMeta = decode_match_meta($resetMatch['meta'] ?? null);
+                    $targetMeta['if_necessary'] = true;
+                    $targetMeta['visible'] = false;
+                    $targetMeta['stage'] = $targetMeta['stage'] ?? $resetStage;
+                    db()->prepare('UPDATE tournament_matches SET meta = :meta WHERE id = :id')
+                        ->execute([
+                            ':meta' => json_encode($targetMeta),
+                            ':id' => $resetMatch['id'],
+                        ]);
+                }
+            }
+        }
+    }
+
+    if ($handled) {
         return;
     }
 
@@ -1384,6 +1521,29 @@ function clear_following_results(int $tournamentId, array $match, array &$visite
         }
         db()->prepare('UPDATE tournament_matches SET score1 = NULL, score2 = NULL, winner_user_id = NULL WHERE id = :id')->execute([':id' => $target['id']]);
         clear_following_results($tournamentId, $target, $visited);
+    }
+
+    if (!empty($meta['reset']) && is_array($meta['reset'])) {
+        $reset = $meta['reset'];
+        $stage = $reset['stage'] ?? ($meta['stage'] ?? null);
+        $round = isset($reset['round']) ? (int)$reset['round'] : null;
+        $matchIndex = isset($reset['match_index']) ? (int)$reset['match_index'] : null;
+        if ($stage && $round && $matchIndex) {
+            $target = find_match_by_coordinates($tournamentId, $stage, $round, $matchIndex);
+            if ($target) {
+                db()->prepare('UPDATE tournament_matches SET player1_user_id = NULL, player2_user_id = NULL, score1 = NULL, score2 = NULL, winner_user_id = NULL WHERE id = :id')
+                    ->execute([':id' => $target['id']]);
+                $targetMeta = decode_match_meta($target['meta'] ?? null);
+                $targetMeta['if_necessary'] = true;
+                $targetMeta['visible'] = false;
+                $targetMeta['stage'] = $targetMeta['stage'] ?? $stage;
+                db()->prepare('UPDATE tournament_matches SET meta = :meta WHERE id = :id')
+                    ->execute([
+                        ':meta' => json_encode($targetMeta),
+                        ':id' => $target['id'],
+                    ]);
+            }
+        }
     }
 }
 

@@ -1077,6 +1077,7 @@ $(function () {
                     return;
                 }
                 var roundNumber = roundIndex + 1;
+                var isFinalStageRound = roundIndex === rounds.length - 1;
                 var roundEl = $('<div class="bracket-round"></div>')
                     .attr('data-stage', entry.key)
                     .attr('data-round-index', roundIndex)
@@ -1125,7 +1126,7 @@ $(function () {
                         var info = { score1: score1, score2: score2, meta: meta };
                         var statusLabel = computeStatusLabel(info, slotIndex, meta);
                         var isChampion = false;
-                        if (entry.key === 'finals' && winnerMeta && playerMeta && playerMeta.id === winnerMeta.id) {
+                        if (entry.key === 'finals' && isFinalStageRound && winnerMeta && playerMeta && playerMeta.id === winnerMeta.id) {
                             isChampion = true;
                         }
                         var sourceMeta = sources[String(slotIndex + 1)] || sources[slotIndex + 1] || null;
