@@ -396,3 +396,91 @@ button.danger:hover,
     background: #e74c3c;
     border-color: #e74c3c;
 }
+
+.bracket-container {
+    overflow-x: auto;
+    padding: 24px 28px;
+    border: 1px solid #243043;
+    border-radius: 12px;
+    background: radial-gradient(circle at top left, rgba(40, 56, 79, 0.35), transparent 60%), #111723;
+    min-height: 320px;
+}
+
+.bracket-container .jQBracket {
+    padding-bottom: 8px;
+}
+
+.bracket-container .jQBracket .round {
+    margin-right: 90px;
+}
+
+.bracket-container .jQBracket .round:last-child {
+    margin-right: 0;
+}
+
+.bracket-container .jQBracket .match {
+    margin-bottom: 28px;
+}
+
+.bracket-container .jQBracket .team {
+    background: rgba(27, 38, 56, 0.95);
+    color: #f0f4ff;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35);
+    padding: 10px 16px;
+}
+
+.bracket-container .jQBracket .team.win {
+    background: linear-gradient(135deg, #1f8d5b, #2fb67a);
+    color: #f5f9ff;
+}
+
+.bracket-container .jQBracket .team.lose {
+    background: rgba(21, 29, 43, 0.6);
+    color: #9aa8c3;
+}
+
+.bracket-container .jQBracket .team .label {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    display: block;
+}
+
+.bracket-container .jQBracket .team .score {
+    display: none;
+}
+
+.bracket-container .jQBracket .connector {
+    border-color: rgba(90, 120, 170, 0.6);
+}
+
+.bracket-container .jQBracket .connector.highlight,
+.bracket-container .jQBracket .connector.highlightWinner {
+    border-color: #2fb67a;
+}
+
+.bracket-container .jQBracket .team:hover {
+    transform: translateY(-2px);
+    background: rgba(41, 58, 84, 0.95);
+}
+
+.bracket-container .jQBracket .team.win:hover {
+    background: linear-gradient(135deg, #25a569, #35c988);
+}
+
+.bracket-container .jQBracket .team::after {
+    content: attr(data-status-label);
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.bracket-container.is-updating {
+    opacity: 0.6;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
