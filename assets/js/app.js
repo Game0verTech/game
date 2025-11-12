@@ -106,6 +106,16 @@ $(function () {
                 } else {
                     team.removeAttr('data-status-label');
                 }
+                team.removeClass('status-win status-loss status-ready status-tbd');
+                if (label === 'WIN') {
+                    team.addClass('status-win');
+                } else if (label === 'LOSS') {
+                    team.addClass('status-loss');
+                } else if (label === 'READY') {
+                    team.addClass('status-ready');
+                } else {
+                    team.addClass('status-tbd');
+                }
             });
         });
     }
@@ -177,21 +187,38 @@ $(function () {
         if (!hasRenderableMatches(data)) {
             return;
         }
-        container.empty();
-        container.removeData('bracket');
+
+        var serialized = JSON.stringify(data);
+        var fallbackMarkup = container.children().detach();
+        var fallbackState = container.data('bracketState');
+        var wrapper = $('<div class="bracket-root"></div>');
         var options = {
             init: data,
-            teamWidth: 190,
+            teamWidth: 220,
             scoreWidth: 0,
-            matchMargin: 28,
-            roundMargin: 90,
+            matchMargin: 36,
+            roundMargin: 120,
             disableToolbar: true,
             disableTeamEdit: true,
             save: function () {}
         };
-        container.bracket(options);
+
+        container.empty().append(wrapper);
+
+        try {
+            wrapper.bracket(options);
+        } catch (error) {
+            console.error('Bracket rendering failed', error);
+            container.empty().append(fallbackMarkup);
+            if (typeof fallbackState !== 'undefined') {
+                container.data('bracketState', fallbackState);
+            }
+            return;
+        }
+
+        fallbackMarkup.remove();
         tagBracketMatches(container, data);
-        container.data('bracketState', JSON.stringify(data));
+        container.data('bracketState', serialized);
         container.data('bracketData', data);
         if (mode === 'admin') {
             updateMatchSummary(container, data);
