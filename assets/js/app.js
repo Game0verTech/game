@@ -112,6 +112,66 @@ $(function () {
         menu.css({ left: adjustedLeft + 'px', top: adjustedTop + 'px' });
     }
 
+    function openTeamAction(container, team, coords) {
+        hideContextMenu();
+
+        if (!team || !team.length || !team.hasClass('is-selectable')) {
+            return;
+        }
+
+        var playerId = parseInt(team.attr('data-player-id'), 10);
+        if (!playerId) {
+            return;
+        }
+
+        var matchEl = team.closest('.match');
+        var matchId = parseInt(matchEl.attr('data-match-id'), 10);
+        if (!matchId) {
+            return;
+        }
+
+        var tournamentId = container.data('tournamentId');
+        var token = container.data('token');
+        if (!tournamentId || !token) {
+            return;
+        }
+
+        var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
+        var menu = getContextMenu();
+        bracketContextPayload = {
+            container: container,
+            tournamentId: tournamentId,
+            matchId: matchId,
+            playerId: playerId,
+            token: token,
+            team: team,
+        };
+
+        bracketContextMenuAction.text('Mark ' + playerName + ' as winner');
+        team.addClass('is-context-target');
+
+        var pageX = coords && typeof coords.pageX === 'number' ? coords.pageX : null;
+        var pageY = coords && typeof coords.pageY === 'number' ? coords.pageY : null;
+        if (pageX === null || pageY === null) {
+            var offset = team.offset();
+            if (offset) {
+                pageX = offset.left + team.outerWidth();
+                pageY = offset.top + team.outerHeight() / 2;
+            } else {
+                pageX = 0;
+                pageY = 0;
+            }
+        }
+
+        positionContextMenu(menu, pageX, pageY);
+
+        if (bracketContextMenuAction && bracketContextMenuAction.length) {
+            window.requestAnimationFrame(function () {
+                bracketContextMenuAction.trigger('focus');
+            });
+        }
+    }
+
     function isMatchNode(node) {
         return Array.isArray(node) && node.length >= 2 && !Array.isArray(node[0]) && !Array.isArray(node[1]);
     }
@@ -208,6 +268,15 @@ $(function () {
                 }
                 var isSelectable = !!matchId && !!(playerMeta && playerMeta.id);
                 team.toggleClass('is-selectable', isSelectable);
+                if (isSelectable) {
+                    team.attr('tabindex', '0');
+                    team.attr('role', 'button');
+                    team.attr('aria-label', 'Mark ' + (playerMeta && playerMeta.name ? playerMeta.name : 'this competitor') + ' as winner');
+                } else {
+                    team.removeAttr('tabindex');
+                    team.removeAttr('role');
+                    team.removeAttr('aria-label');
+                }
             });
         });
     }
@@ -290,6 +359,7 @@ $(function () {
             init: data,
             teamWidth: 220,
             scoreWidth: 0,
+            teamHeight: 40,
             matchMargin: 28,
             roundMargin: 120,
             disableToolbar: true,
@@ -405,45 +475,37 @@ $(function () {
             return;
         }
         container.off('scroll.bracketContextMenu').on('scroll.bracketContextMenu', hideContextMenu);
-        container.off('contextmenu.bracket').on('contextmenu.bracket', '.team', function (event) {
+        container.off('contextmenu.bracketAction').on('contextmenu.bracketAction', '.team', function (event) {
             event.preventDefault();
-            hideContextMenu();
-            var team = $(this);
-            if (!team.hasClass('is-selectable')) {
+            openTeamAction(container, $(this), event);
+        });
+
+        container.off('click.bracketAction').on('click.bracketAction', '.team', function (event) {
+            if (event.button !== 0) {
                 return;
             }
-            var playerId = parseInt(team.attr('data-player-id'), 10);
-            if (!playerId) {
+            event.preventDefault();
+            openTeamAction(container, $(this), event);
+        });
+
+        container.off('keydown.bracketAction').on('keydown.bracketAction', '.team', function (event) {
+            if (event.key !== 'Enter' && event.key !== ' ') {
                 return;
             }
-            var matchEl = team.closest('.match');
-            var matchId = parseInt(matchEl.attr('data-match-id'), 10);
-            if (!matchId) {
-                return;
-            }
-            var tournamentId = container.data('tournamentId');
-            var token = container.data('token');
-            if (!tournamentId || !token) {
-                return;
-            }
-            var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
-            var menu = getContextMenu();
-            bracketContextPayload = {
-                container: container,
-                tournamentId: tournamentId,
-                matchId: matchId,
-                playerId: playerId,
-                token: token,
-                team: team,
-            };
-            bracketContextMenuAction.text('Mark ' + playerName + ' as winner');
-            team.addClass('is-context-target');
-            positionContextMenu(menu, event.pageX, event.pageY);
-            if (bracketContextMenuAction && bracketContextMenuAction.length) {
-                window.requestAnimationFrame(function () {
-                    bracketContextMenuAction.trigger('focus');
-                });
-            }
+            event.preventDefault();
+            openTeamAction(container, $(this), {
+                pageX: null,
+                pageY: null,
+            });
+        });
+
+        container.off('touchend.bracketAction').on('touchend.bracketAction', '.team', function (event) {
+            var touch = event.originalEvent && event.originalEvent.changedTouches ? event.originalEvent.changedTouches[0] : null;
+            var coords = touch
+                ? { pageX: touch.pageX, pageY: touch.pageY }
+                : { pageX: event.pageX || null, pageY: event.pageY || null };
+            event.preventDefault();
+            openTeamAction(container, $(this), coords);
         });
     }
 

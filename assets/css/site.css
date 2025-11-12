@@ -450,7 +450,7 @@ button.danger:hover,
 }
 
 .bracket-container .jQBracket .team.is-selectable {
-    cursor: context-menu;
+    cursor: pointer;
 }
 
 .bracket-container .jQBracket .team div.label {
@@ -493,14 +493,20 @@ button.danger:hover,
     border-color: rgba(83, 199, 153, 0.85);
 }
 
-.bracket-container .jQBracket .team:hover {
+.bracket-container .jQBracket .team:hover,
+.bracket-container .jQBracket .team:focus {
     transform: none;
     box-shadow: 0 16px 28px rgba(8, 12, 22, 0.55);
     background: rgba(33, 47, 68, 0.98);
 }
 
-.bracket-container .jQBracket .team.win:hover {
+.bracket-container .jQBracket .team.win:hover,
+.bracket-container .jQBracket .team.win:focus {
     background: linear-gradient(140deg, rgba(52, 181, 122, 0.98), rgba(88, 218, 163, 0.98));
+}
+
+.bracket-container .jQBracket .team:focus {
+    outline: none;
 }
 
 .bracket-container .jQBracket .team::after {
