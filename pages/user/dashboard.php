@@ -76,13 +76,20 @@ $openTournaments = list_tournaments('open');
     <h2>Your Tournaments</h2>
     <?php if ($myTournaments): ?>
         <?php foreach ($myTournaments as $tournament): ?>
+            <?php $userBracket = tournament_bracket_snapshot($tournament); ?>
             <div class="tournament-view">
                 <h3><?= sanitize($tournament['name']) ?> (<?= sanitize(ucwords(str_replace('-', ' ', $tournament['type']))) ?>)</h3>
                 <p>Status: <?= sanitize(ucfirst($tournament['status'])) ?></p>
                 <?php if ($tournament['type'] === 'round-robin' && $tournament['groups_json']): ?>
                     <div class="group-container" data-group='<?= sanitize($tournament['groups_json']) ?>' data-mode="user"></div>
-                <?php elseif ($tournament['bracket_json']): ?>
-                    <div class="bracket-container" data-bracket='<?= sanitize($tournament['bracket_json']) ?>' data-mode="user"></div>
+                <?php elseif ($userBracket): ?>
+                    <div
+                        class="bracket-container"
+                        data-bracket='<?= sanitize($userBracket) ?>'
+                        data-mode="user"
+                        data-tournament-id="<?= (int)$tournament['id'] ?>"
+                        <?= in_array($tournament['status'], ['live'], true) ? 'data-live="1"' : '' ?>
+                    ></div>
                 <?php else: ?>
                     <p>Bracket not generated yet.</p>
                 <?php endif; ?>
