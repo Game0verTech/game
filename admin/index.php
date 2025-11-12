@@ -307,14 +307,8 @@ $config = load_config();
             <?php else: ?>
                 <div class="card">
                     <h3>Bracket</h3>
-                    <form method="post" action="/api/tournaments.php">
-                        <input type="hidden" name="action" value="save_bracket">
-                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                        <input type="hidden" name="tournament_id" value="<?= (int)$current['id'] ?>">
-                        <input type="hidden" id="bracket_json" name="bracket_json" value='<?= sanitize($current['bracket_json'] ?? json_encode(generate_bracket_structure($current['id']))) ?>'>
-                        <div class="bracket-container" data-bracket='<?= sanitize($current['bracket_json'] ?? json_encode(generate_bracket_structure($current['id']))) ?>' data-mode="admin" data-target="bracket_json"></div>
-                        <button type="submit">Save Bracket</button>
-                    </form>
+                    <?php $bracketJson = $current['bracket_json'] ?? json_encode(generate_bracket_structure($current['id'])); ?>
+                    <div class="bracket-container" data-bracket='<?= sanitize($bracketJson) ?>' data-mode="viewer"></div>
                 </div>
             <?php endif; ?>
             <div class="card">

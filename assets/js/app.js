@@ -15,24 +15,23 @@ $(function () {
                 return;
             }
         }
-        if (mode === 'admin') {
-            container.bracket({
-                init: data,
-                save: function (updatedData) {
-                    if (field) {
-                        $('#' + field).val(JSON.stringify(updatedData));
-                    }
-                }
-            });
-        } else {
-            container.bracket({
-                init: data,
-                save: function () {},
-                disableToolbar: true,
-                teamWidth: 120,
-                matchMargin: 10
-            });
+        var readOnly = mode !== 'admin';
+        var options = {
+            init: data,
+            teamWidth: 120,
+            matchMargin: 10,
+            disableToolbar: readOnly,
+            disableTeamEdit: readOnly,
+            save: function () {}
+        };
+
+        if (!readOnly && field) {
+            options.save = function (updatedData) {
+                $('#' + field).val(JSON.stringify(updatedData));
+            };
         }
+
+        container.bracket(options);
     });
 
     $('.group-container').each(function () {

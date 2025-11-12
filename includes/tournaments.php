@@ -97,13 +97,31 @@ function generate_bracket_structure(int $tournamentId): array
         $name2 = $chunk[1]['username'] ?? 'BYE';
         $teams[] = [$name1, $name2];
     }
+    if ($tournament['type'] !== 'round-robin' && count($teams) > 0) {
+        $teamCount = count($teams);
+        $target = 1;
+        while ($target < $teamCount) {
+            $target *= 2;
+        }
+        while ($teamCount < $target) {
+            $teams[] = ['BYE', 'BYE'];
+            $teamCount++;
+        }
+    }
     $results = [];
     if ($tournament['type'] === 'single') {
-        $round = [];
-        foreach ($teams as $_) {
-            $round[] = [null, null];
+        $matches = count($teams);
+        while ($matches > 0) {
+            $round = [];
+            for ($i = 0; $i < $matches; $i++) {
+                $round[] = [null, null];
+            }
+            $results[] = $round;
+            if ($matches === 1) {
+                break;
+            }
+            $matches = (int)ceil($matches / 2);
         }
-        $results[] = $round;
         return ['teams' => $teams, 'results' => $results];
     }
     if ($tournament['type'] === 'double') {
