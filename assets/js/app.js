@@ -881,7 +881,11 @@ $(function () {
     }
 
     function setupPolling(container, tournamentId, mode) {
-        if (!tournamentId || !shouldPoll(container, mode)) {
+        if (!tournamentId) {
+            return;
+        }
+        fetchBracket(container, tournamentId, mode);
+        if (!shouldPoll(container, mode)) {
             return;
         }
         var interval = parseInt(container.data('refreshInterval'), 10);

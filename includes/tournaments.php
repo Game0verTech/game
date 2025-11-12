@@ -38,11 +38,58 @@ function update_tournament_status(int $id, string $status): void
 
 function update_tournament_json(int $id, ?string $bracketJson, ?string $groupJson): void
 {
-    $stmt = db()->prepare('UPDATE tournaments SET bracket_json = ?, groups_json = ? WHERE id = ?');
-    $stmt->bindValue(1, $bracketJson, $bracketJson === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-    $stmt->bindValue(2, $groupJson, $groupJson === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-    $stmt->bindValue(3, $id, PDO::PARAM_INT);
-    $stmt->execute();
+    $fields = [];
+    $params = [':id' => $id];
+
+    if ($bracketJson !== null) {
+        $fields[] = 'bracket_json = CAST(:bracket AS JSON)';
+        $params[':bracket'] = $bracketJson;
+    } else {
+        $fields[] = 'bracket_json = NULL';
+    }
+
+    if ($groupJson !== null) {
+        $fields[] = 'groups_json = CAST(:groups AS JSON)';
+        $params[':groups'] = $groupJson;
+    } else {
+        $fields[] = 'groups_json = NULL';
+    }
+
+    if (!$fields) {
+        return;
+    }
+
+    $sql = 'UPDATE tournaments SET ' . implode(', ', $fields) . ' WHERE id = :id';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+}
+
+function tournament_bracket_snapshot(array $tournament): ?string
+{
+    $id = isset($tournament['id']) ? (int)$tournament['id'] : 0;
+    if ($id <= 0) {
+        return $tournament['bracket_json'] ?? null;
+    }
+
+    $status = $tournament['status'] ?? null;
+    $existing = $tournament['bracket_json'] ?? null;
+    $shouldRefresh = in_array($status, ['live', 'completed'], true) || empty($existing);
+
+    if (!$shouldRefresh && $existing !== null) {
+        return $existing;
+    }
+
+    $structure = generate_bracket_structure($id);
+    if (empty($structure)) {
+        return $existing;
+    }
+
+    try {
+        return safe_json_encode($structure);
+    } catch (Throwable $e) {
+        error_log(sprintf('Failed to encode bracket for tournament %d: %s', $id, $e->getMessage()));
+        return $existing;
+    }
 }
 
 function add_player_to_tournament(int $tournamentId, int $userId): bool
