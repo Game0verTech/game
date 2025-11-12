@@ -46,13 +46,54 @@ switch ($action) {
         $name = trim($_POST['name'] ?? '');
         $type = $_POST['type'] ?? '';
         $description = trim($_POST['description'] ?? '');
+        $date = $_POST['scheduled_date'] ?? '';
+        $time = $_POST['scheduled_time'] ?? '';
+        $location = trim($_POST['location'] ?? '');
+        $scheduledAt = normalize_tournament_schedule_input($date, $time);
+        if ($location === '') {
+            $location = default_tournament_location();
+        }
         if ($name === '' || !in_array($type, ['single', 'double', 'round-robin'], true)) {
             flash('error', 'Provide a name and valid tournament type.');
             redirect('/?page=admin&t=manage');
         }
-        $tournament = create_tournament($name, $type, $description, $user['id']);
+        $tournament = create_tournament($name, $type, $description, $user['id'], $scheduledAt, $location);
         flash('success', 'Tournament created.');
-        redirect('/?page=admin&t=manage&id=' . $tournament['id']);
+        redirect('/?page=admin&t=view&id=' . $tournament['id']);
+
+    case 'update_settings':
+        require_role('admin', 'manager');
+        $tournamentId = (int)($_POST['tournament_id'] ?? 0);
+        $tournament = get_tournament($tournamentId);
+        if (!$tournament) {
+            flash('error', 'Tournament not found.');
+            redirect('/?page=admin&t=manage');
+        }
+        $name = trim($_POST['name'] ?? '');
+        $type = $_POST['type'] ?? $tournament['type'];
+        $description = trim($_POST['description'] ?? '');
+        $date = $_POST['scheduled_date'] ?? '';
+        $time = $_POST['scheduled_time'] ?? '';
+        $location = trim($_POST['location'] ?? '');
+        $selectedPlayers = $_POST['players'] ?? [];
+        if (!is_array($selectedPlayers)) {
+            $selectedPlayers = [];
+        }
+        $scheduledAt = normalize_tournament_schedule_input($date, $time);
+        if ($scheduledAt === null) {
+            $scheduledAt = $tournament['scheduled_at'] ?? null;
+        }
+        if ($location === '') {
+            $location = $tournament['location'] ?: default_tournament_location();
+        }
+        if ($name === '' || !in_array($type, ['single', 'double', 'round-robin'], true)) {
+            flash('error', 'Please provide valid tournament details.');
+            redirect('/?page=admin&t=view&id=' . $tournamentId);
+        }
+        update_tournament_details($tournamentId, $name, $type, $description, $scheduledAt, $location);
+        set_tournament_players($tournamentId, $selectedPlayers);
+        flash('success', 'Tournament settings updated.');
+        redirect('/?page=admin&t=view&id=' . $tournamentId);
 
     case 'open':
         require_role('admin', 'manager');

@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     type ENUM('single', 'double', 'round-robin') NOT NULL,
     description TEXT,
     status ENUM('draft', 'open', 'live', 'completed') NOT NULL DEFAULT 'draft',
+    scheduled_at DATETIME DEFAULT NULL,
+    location VARCHAR(255) DEFAULT NULL,
     created_by INT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

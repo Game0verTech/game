@@ -1147,4 +1147,492 @@ $(function () {
             e.preventDefault();
         }
     });
+
+    var calendarElement = document.getElementById('tournamentCalendar');
+    var defaultTournamentLocation = 'Kenton Moose Lodge Basement';
+    if (calendarElement) {
+        var locationAttribute = calendarElement.getAttribute('data-default-location');
+        if (locationAttribute) {
+            defaultTournamentLocation = locationAttribute;
+        }
+    }
+
+    var tournamentDirectory = {};
+
+    function parseScheduleDate(value) {
+        if (!value || typeof value !== 'string') {
+            return null;
+        }
+        var normalized = value.replace(' ', 'T');
+        var date = new Date(normalized);
+        if (Number.isNaN(date.getTime())) {
+            date = new Date(normalized + 'Z');
+        }
+        if (Number.isNaN(date.getTime())) {
+            return null;
+        }
+        return date;
+    }
+
+    function registerTournament(payload) {
+        if (!payload || typeof payload.id === 'undefined') {
+            return null;
+        }
+        var id = parseInt(payload.id, 10);
+        if (!id) {
+            return null;
+        }
+        var copy = $.extend(true, {}, payload);
+        copy.id = id;
+        var scheduled = copy.scheduled_at || copy.scheduledAt;
+        copy.scheduledDate = parseScheduleDate(scheduled);
+        copy.location = copy.location || defaultTournamentLocation;
+        copy.players = Array.isArray(copy.players)
+            ? copy.players.map(function (playerId) {
+                return parseInt(playerId, 10);
+            }).filter(function (playerId) {
+                return !Number.isNaN(playerId) && playerId > 0;
+            })
+            : [];
+        tournamentDirectory[id] = copy;
+        return copy;
+    }
+
+    function keyForDate(date) {
+        if (!date) {
+            return '';
+        }
+        var month = (date.getMonth() + 1).toString().padStart(2, '0');
+        var day = date.getDate().toString().padStart(2, '0');
+        return date.getFullYear() + '-' + month + '-' + day;
+    }
+
+    function formatDateTime(date) {
+        if (!date) {
+            return 'Schedule TBD';
+        }
+        var datePart = date.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        var timePart = date.toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+        return datePart + ' at ' + timePart;
+    }
+
+    function formatTournamentSchedule(tournament) {
+        if (!tournament) {
+            return '';
+        }
+        var schedule = formatDateTime(tournament.scheduledDate);
+        var location = tournament.location || defaultTournamentLocation;
+        return schedule + ' • ' + location;
+    }
+
+    function toDateInputValue(date) {
+        if (!date) {
+            return '';
+        }
+        var month = (date.getMonth() + 1).toString().padStart(2, '0');
+        var day = date.getDate().toString().padStart(2, '0');
+        return date.getFullYear() + '-' + month + '-' + day;
+    }
+
+    function toTimeInputValue(date) {
+        if (!date) {
+            return '';
+        }
+        var hours = date.getHours().toString().padStart(2, '0');
+        var minutes = date.getMinutes().toString().padStart(2, '0');
+        return hours + ':' + minutes;
+    }
+
+    var activeModal = null;
+
+    function openModal(modal) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        modal.data('trigger', document.activeElement);
+        modal.removeAttr('hidden');
+        modal.attr('aria-hidden', 'false');
+        modal.addClass('is-visible');
+        $('body').addClass('modal-open');
+        activeModal = modal;
+        window.requestAnimationFrame(function () {
+            var focusTarget = modal.find('[data-modal-focus]').first();
+            if (!focusTarget.length) {
+                focusTarget = modal.find('input, select, textarea, button, a').filter(':visible');
+            }
+            if (focusTarget.length) {
+                focusTarget.first().trigger('focus');
+            }
+        });
+    }
+
+    function closeModal(modal, suppressFocus) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        modal.attr('aria-hidden', 'true');
+        modal.attr('hidden', 'hidden');
+        modal.removeClass('is-visible');
+        if ($('.modal-overlay.is-visible').length === 0) {
+            $('body').removeClass('modal-open');
+        }
+        if (!suppressFocus) {
+            var trigger = modal.data('trigger');
+            if (trigger && typeof trigger.focus === 'function') {
+                trigger.focus();
+            }
+        }
+        modal.removeData('trigger');
+        if (activeModal && modal[0] === activeModal[0]) {
+            activeModal = null;
+        }
+    }
+
+    function ensurePlayerChecklist(modal) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        var list = modal.find('[data-player-list]');
+        if (!list.length || list.children().length) {
+            return;
+        }
+        var players = parseJsonPayload(modal, 'all-players') || [];
+        var directory = {};
+        players.forEach(function (player) {
+            var id = parseInt(player.id, 10);
+            if (!id) {
+                return;
+            }
+            directory[id] = player;
+            var label = $('<label class="player-option"></label>');
+            var checkbox = $('<input type="checkbox" name="players[]">').val(id);
+            var name = $('<span class="player-option__name"></span>').text(player.username);
+            label.append(checkbox, name);
+            if (player.role && player.role !== 'player') {
+                var readableRole = (player.role || '').replace(/[-_]/g, ' ');
+                readableRole = readableRole.charAt(0).toUpperCase() + readableRole.slice(1);
+                var role = $('<span class="player-option__role"></span>').text(readableRole);
+                label.append(role);
+            }
+            list.append(label);
+        });
+        modal.data('playerDirectory', directory);
+    }
+
+    function renderSelectedPlayers(modal) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        var chips = modal.find('.js-selected-players');
+        if (!chips.length) {
+            return;
+        }
+        var directory = modal.data('playerDirectory');
+        if (!directory) {
+            var players = parseJsonPayload(modal, 'all-players') || [];
+            directory = {};
+            players.forEach(function (player) {
+                var id = parseInt(player.id, 10);
+                if (id) {
+                    directory[id] = player;
+                }
+            });
+            modal.data('playerDirectory', directory);
+        }
+        chips.empty();
+        var checked = modal.find('[data-player-list] input[type="checkbox"]:checked');
+        if (!checked.length) {
+            chips.append($('<p class="muted small"></p>').text('No players selected yet.'));
+            return;
+        }
+        checked.each(function () {
+            var id = parseInt(this.value, 10);
+            if (!id) {
+                return;
+            }
+            var player = directory[id];
+            var label = player ? player.username : 'Player #' + id;
+            chips.append($('<span class="chip"></span>').text(label));
+        });
+    }
+
+    function openSettingsModal(modal, tournamentId) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        var tournament = tournamentDirectory[tournamentId];
+        if (!tournament) {
+            return;
+        }
+        ensurePlayerChecklist(modal);
+        var form = modal.find('form');
+        if (form.length && typeof form[0].reset === 'function') {
+            form[0].reset();
+        }
+        form.find('[name="tournament_id"]').val(tournament.id);
+        form.find('[name="name"]').val(tournament.name || '');
+        form.find('[name="type"]').val(tournament.type || 'single');
+        form.find('[name="description"]').val(tournament.description || '');
+        form.find('[name="scheduled_date"]').val(toDateInputValue(tournament.scheduledDate));
+        form.find('[name="scheduled_time"]').val(toTimeInputValue(tournament.scheduledDate));
+        form.find('[name="location"]').val(tournament.location || defaultTournamentLocation);
+
+        var list = modal.find('[data-player-list]');
+        var toggleButton = modal.find('[data-toggle-player-list]');
+        if (list.attr('hidden') === undefined) {
+            list.attr('hidden', 'hidden');
+        }
+        toggleButton.attr('aria-expanded', 'false').text('Add Players');
+
+        list.find('input[type="checkbox"]').each(function () {
+            var checkbox = $(this);
+            var value = parseInt(checkbox.val(), 10);
+            var isChecked = tournament.players.indexOf(value) !== -1;
+            checkbox.prop('checked', isChecked);
+        });
+        renderSelectedPlayers(modal);
+        openModal(modal);
+    }
+
+    function determineInitialMonth(tournaments) {
+        var today = new Date();
+        var candidate = null;
+        tournaments.forEach(function (tournament) {
+            if (!tournament || !tournament.scheduledDate) {
+                return;
+            }
+            if (!candidate || tournament.scheduledDate < candidate) {
+                candidate = tournament.scheduledDate;
+            }
+        });
+        var base = candidate || today;
+        return new Date(base.getFullYear(), base.getMonth(), 1);
+    }
+
+    function buildCalendar(container, state) {
+        if (!container || !container.length || !state) {
+            return;
+        }
+        state.tournaments = state.ids.map(function (id) {
+            return tournamentDirectory[id];
+        }).filter(Boolean);
+
+        container.empty();
+        var header = $('<div class="calendar-header"></div>');
+        var prev = $('<button type="button" class="calendar-nav" data-nav="prev" aria-label="Previous month">&#10094;</button>');
+        var next = $('<button type="button" class="calendar-nav" data-nav="next" aria-label="Next month">&#10095;</button>');
+        var title = $('<div class="calendar-month"></div>').text(state.currentMonth.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'long'
+        }));
+        header.append(prev, title, next);
+
+        var labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        var labelsRow = $('<div class="calendar-labels"></div>');
+        labels.forEach(function (label) {
+            labelsRow.append($('<div class="calendar-label"></div>').text(label));
+        });
+
+        var daysGrid = $('<div class="calendar-days"></div>');
+        var firstOfMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth(), 1);
+        var start = new Date(firstOfMonth);
+        start.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
+
+        var eventsByDate = {};
+        state.tournaments.forEach(function (tournament) {
+            if (!tournament || !tournament.scheduledDate) {
+                return;
+            }
+            var key = keyForDate(tournament.scheduledDate);
+            eventsByDate[key] = eventsByDate[key] || [];
+            eventsByDate[key].push(tournament);
+        });
+        Object.keys(eventsByDate).forEach(function (key) {
+            eventsByDate[key].sort(function (a, b) {
+                if (!a.scheduledDate || !b.scheduledDate) {
+                    return 0;
+                }
+                return a.scheduledDate - b.scheduledDate;
+            });
+        });
+
+        for (var index = 0; index < 42; index++) {
+            var cellDate = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
+            var dayCell = $('<div class="calendar-day"></div>');
+            if (cellDate.getMonth() !== state.currentMonth.getMonth()) {
+                dayCell.addClass('is-outside');
+            }
+            var today = new Date();
+            if (cellDate.getFullYear() === today.getFullYear() && cellDate.getMonth() === today.getMonth() && cellDate.getDate() === today.getDate()) {
+                dayCell.addClass('is-today');
+            }
+            dayCell.append($('<span class="calendar-day__date"></span>').text(cellDate.getDate()));
+            var eventsWrapper = $('<div class="calendar-events"></div>');
+            var dayKey = keyForDate(cellDate);
+            var events = eventsByDate[dayKey] || [];
+            events.forEach(function (tournament) {
+                var eventEl = $('<button type="button" class="calendar-event"></button>');
+                eventEl.addClass('status-' + (tournament.status || 'draft'));
+                eventEl.attr('data-tournament-id', tournament.id);
+                eventEl.append($('<span class="calendar-event__name"></span>').text(tournament.name || 'Tournament'));
+                if (tournament.scheduledDate) {
+                    eventEl.append($('<span class="calendar-event__time"></span>').text(tournament.scheduledDate.toLocaleTimeString(undefined, {
+                        hour: 'numeric',
+                        minute: '2-digit'
+                    })));
+                }
+                eventEl.attr('title', formatTournamentSchedule(tournament));
+                eventsWrapper.append(eventEl);
+            });
+            dayCell.append(eventsWrapper);
+            daysGrid.append(dayCell);
+        }
+
+        container.append(header, labelsRow, daysGrid);
+
+        header.find('[data-nav="prev"]').on('click', function () {
+            state.currentMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth() - 1, 1);
+            buildCalendar(container, state);
+        });
+        header.find('[data-nav="next"]').on('click', function () {
+            state.currentMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth() + 1, 1);
+            buildCalendar(container, state);
+        });
+    }
+
+    $('.tournament-overview').each(function () {
+        var payload = parseJsonPayload($(this), 'tournament');
+        if (payload) {
+            registerTournament(payload);
+        }
+    });
+
+    var calendarContainer = $('#tournamentCalendar');
+    if (calendarContainer.length) {
+        var payload = parseJsonPayload(calendarContainer, 'tournaments') || [];
+        var registered = [];
+        payload.forEach(function (entry) {
+            var stored = registerTournament(entry);
+            if (stored) {
+                registered.push(stored);
+            }
+        });
+        var calendarState = {
+            ids: registered.map(function (entry) {
+                return entry.id;
+            }),
+            currentMonth: determineInitialMonth(registered)
+        };
+        if (!calendarState.ids.length) {
+            calendarState.currentMonth = determineInitialMonth([]);
+        }
+        buildCalendar(calendarContainer, calendarState);
+        calendarContainer.on('click', '.calendar-event', function (event) {
+            event.preventDefault();
+            var tournamentId = $(this).data('tournamentId');
+            openActionsModal(tournamentId);
+        });
+    }
+
+    function openActionsModal(tournamentId) {
+        var modal = $('#tournamentActionsModal');
+        var tournament = tournamentDirectory[tournamentId];
+        if (!modal.length || !tournament) {
+            return;
+        }
+        modal.data('tournamentId', tournamentId);
+        modal.find('.js-action-title').text(tournament.name || 'Tournament');
+        modal.find('.js-action-schedule').text(formatTournamentSchedule(tournament));
+        modal.find('.js-open-tournament').attr('href', '/?page=admin&t=view&id=' + tournamentId);
+        openModal(modal);
+    }
+
+    $(document).on('click', '[data-modal-trigger]', function (event) {
+        var targetId = $(this).data('modalTrigger');
+        if (!targetId) {
+            return;
+        }
+        event.preventDefault();
+        var modal = $('#' + targetId);
+        if (!modal.length) {
+            return;
+        }
+        if (targetId === 'tournamentSettingsModal') {
+            var source = $(this);
+            var dataPayload = parseJsonPayload(source, 'tournament');
+            if (!dataPayload) {
+                var parentWithData = source.closest('[data-tournament]');
+                if (parentWithData.length) {
+                    dataPayload = parseJsonPayload(parentWithData, 'tournament');
+                }
+            }
+            if (dataPayload) {
+                registerTournament(dataPayload);
+            }
+            var tournamentId = source.data('settingsId');
+            if (!tournamentId && dataPayload && typeof dataPayload.id !== 'undefined') {
+                tournamentId = dataPayload.id;
+            }
+            closeModal($('#tournamentActionsModal'), true);
+            openSettingsModal(modal, tournamentId);
+        } else {
+            openModal(modal);
+        }
+    });
+
+    $(document).on('click', '[data-close-modal]', function (event) {
+        event.preventDefault();
+        var overlay = $(this).closest('.modal-overlay');
+        closeModal(overlay);
+    });
+
+    $(document).on('click', '.modal-overlay', function (event) {
+        if (event.target === this) {
+            closeModal($(this));
+        }
+    });
+
+    $(document).on('keydown', function (event) {
+        if (event.key === 'Escape') {
+            var openModals = $('.modal-overlay.is-visible');
+            if (openModals.length) {
+                closeModal($(openModals[openModals.length - 1]));
+            }
+        }
+    });
+
+    $(document).on('click', '[data-open-settings]', function (event) {
+        event.preventDefault();
+        var modal = $('#tournamentSettingsModal');
+        var actions = $('#tournamentActionsModal');
+        var tournamentId = actions.data('tournamentId');
+        closeModal(actions, true);
+        openSettingsModal(modal, tournamentId);
+    });
+
+    $('#tournamentSettingsModal').on('click', '[data-toggle-player-list]', function (event) {
+        event.preventDefault();
+        var modal = $('#tournamentSettingsModal');
+        ensurePlayerChecklist(modal);
+        var list = modal.find('[data-player-list]');
+        var button = $(this);
+        if (list.attr('hidden') !== undefined) {
+            list.removeAttr('hidden');
+            button.attr('aria-expanded', 'true').text('Hide Player List');
+        } else {
+            list.attr('hidden', 'hidden');
+            button.attr('aria-expanded', 'false').text('Add Players');
+        }
+    });
+
+    $('#tournamentSettingsModal').on('change', '[data-player-list] input[type="checkbox"]', function () {
+        renderSelectedPlayers($('#tournamentSettingsModal'));
+    });
 });
