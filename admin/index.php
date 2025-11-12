@@ -163,30 +163,48 @@ $config = load_config();
                             <td><?= sanitize(date('Y-m-d H:i', strtotime($account['updated_at']))) ?></td>
                             <td>
                                 <?php if ($account['id'] !== $user['id']): ?>
-                                    <form method="post" action="/api/admin.php" class="inline">
-                                        <input type="hidden" name="action" value="set_role">
-                                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                                        <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
-                                        <label class="sr-only" for="role-<?= (int)$account['id'] ?>">Role</label>
-                                        <select id="role-<?= (int)$account['id'] ?>" name="role">
-                                            <option value="admin" <?= $account['role'] === 'admin' ? 'selected' : '' ?>>Administrator</option>
-                                            <option value="manager" <?= $account['role'] === 'manager' ? 'selected' : '' ?>>Manager</option>
-                                            <option value="player" <?= $account['role'] === 'player' ? 'selected' : '' ?>>Player</option>
-                                        </select>
-                                        <button type="submit">Update</button>
-                                    </form>
-                                    <form method="post" action="/api/admin.php" class="inline">
-                                        <input type="hidden" name="action" value="<?= $isBanned ? 'unban_user' : 'ban_user' ?>">
-                                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                                        <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
-                                        <button type="submit"><?= $isBanned ? 'Unban' : 'Ban' ?></button>
-                                    </form>
-                                    <form method="post" action="/api/admin.php" class="inline js-confirm" data-confirm="Delete <?= sanitize($account['username']) ?>? This cannot be undone.">
-                                        <input type="hidden" name="action" value="delete_user">
-                                        <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                                        <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
-                                        <button type="submit" class="danger">Delete</button>
-                                    </form>
+                                    <div class="action-cell">
+                                        <form method="post" action="/api/admin.php" class="inline role-form">
+                                            <input type="hidden" name="action" value="set_role">
+                                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                            <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
+                                            <label class="sr-only" for="role-<?= (int)$account['id'] ?>">Role</label>
+                                            <select id="role-<?= (int)$account['id'] ?>" name="role">
+                                                <option value="admin" <?= $account['role'] === 'admin' ? 'selected' : '' ?>>Administrator</option>
+                                                <option value="manager" <?= $account['role'] === 'manager' ? 'selected' : '' ?>>Manager</option>
+                                                <option value="player" <?= $account['role'] === 'player' ? 'selected' : '' ?>>Player</option>
+                                            </select>
+                                            <button type="submit" class="icon-btn" data-tooltip="Save role" aria-label="Save role for <?= sanitize($account['username']) ?>">
+                                                <span aria-hidden="true">💾</span>
+                                                <span class="sr-only">Save role</span>
+                                            </button>
+                                        </form>
+                                        <form method="post" action="/api/admin.php" class="inline">
+                                            <input type="hidden" name="action" value="<?= $isBanned ? 'unban_user' : 'ban_user' ?>">
+                                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                            <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
+                                            <?php if ($isBanned): ?>
+                                                <button type="submit" class="icon-btn" data-tooltip="Unban user" aria-label="Unban <?= sanitize($account['username']) ?>">
+                                                    <span aria-hidden="true">🔓</span>
+                                                    <span class="sr-only">Unban user</span>
+                                                </button>
+                                            <?php else: ?>
+                                                <button type="submit" class="icon-btn" data-tooltip="Ban user" aria-label="Ban <?= sanitize($account['username']) ?>">
+                                                    <span aria-hidden="true">🚫</span>
+                                                    <span class="sr-only">Ban user</span>
+                                                </button>
+                                            <?php endif; ?>
+                                        </form>
+                                        <form method="post" action="/api/admin.php" class="inline js-confirm" data-confirm="Delete <?= sanitize($account['username']) ?>? This cannot be undone.">
+                                            <input type="hidden" name="action" value="delete_user">
+                                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                            <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
+                                            <button type="submit" class="icon-btn danger" data-tooltip="Delete user" aria-label="Delete <?= sanitize($account['username']) ?>">
+                                                <span aria-hidden="true">🗑️</span>
+                                                <span class="sr-only">Delete user</span>
+                                            </button>
+                                        </form>
+                                    </div>
                                 <?php else: ?>
                                     <span class="muted">Cannot modify own account</span>
                                 <?php endif; ?>

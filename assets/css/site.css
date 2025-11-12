@@ -284,6 +284,95 @@ form button {
     padding: 6px 8px;
 }
 
+.action-cell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.action-cell form {
+    margin: 0;
+}
+
+.role-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.role-form select {
+    min-width: 130px;
+}
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid #2a3348;
+    background: #10192a;
+    color: #e1ecff;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    font-size: 1.1rem;
+    padding: 0;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+    background: #1b2640;
+    border-color: #3c4b6b;
+    transform: translateY(-1px);
+}
+
+.icon-btn.danger {
+    background: #2a1111;
+    border-color: #a13636;
+    color: #ffc7c7;
+}
+
+.icon-btn.danger:hover,
+.icon-btn.danger:focus-visible {
+    background: #3a1616;
+    border-color: #d44a4a;
+}
+
+.icon-btn span[aria-hidden="true"] {
+    pointer-events: none;
+}
+
+[data-tooltip] {
+    position: relative;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    background: #0b1220;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -6px);
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 20;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+    opacity: 1;
+    transform: translate(-50%, -12px);
+}
+
 .sr-only {
     position: absolute;
     width: 1px;
