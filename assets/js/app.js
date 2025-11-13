@@ -1858,6 +1858,10 @@ $(function () {
         if (!data) {
             return;
         }
+        if (typeof container.group !== 'function') {
+            window.console && console.warn && console.warn('Group plugin is unavailable.');
+            return;
+        }
         var options = { data: data };
         if (mode !== 'admin') {
             options.readonly = true;
