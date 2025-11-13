@@ -74,6 +74,15 @@ require __DIR__ . '/../../templates/header.php';
                         <span id="store-transaction-total">$0.00</span>
                     </div>
                 </div>
+                <div class="transaction-payment">
+                    <label for="store-amount-tendered">Amount Tendered
+                        <input type="number" inputmode="decimal" step="0.01" min="0" id="store-amount-tendered" placeholder="0.00" disabled>
+                    </label>
+                    <div class="change-due" id="store-change-due-container" data-state="even">
+                        <span class="change-label" id="store-change-label">Change Due</span>
+                        <span class="change-value" id="store-change-due">$0.00</span>
+                    </div>
+                </div>
                 <div class="transaction-actions">
                     <button type="button" class="ghost" id="store-clear-transaction">Cancel Sale</button>
                     <button type="button" class="primary" id="store-complete-transaction" disabled>Complete Sale</button>
@@ -170,7 +179,7 @@ require __DIR__ . '/../../templates/header.php';
 </div>
 
 <div class="store-modal" id="store-reports-modal" hidden>
-    <div class="store-modal__dialog large">
+    <div class="store-modal__dialog xlarge reports-dialog">
         <button type="button" class="store-modal__close" data-close>&times;</button>
         <header class="modal-header">
             <h2>Reports</h2>
@@ -205,26 +214,81 @@ require __DIR__ . '/../../templates/header.php';
                     <span class="value" data-summary="profit">$0.00</span>
                 </div>
             </div>
-            <div class="reports-table-wrapper">
-                <table class="reports-table">
-                    <thead>
-                        <tr>
-                            <th>Session</th>
-                            <th>Terminal</th>
-                            <th>Opened By</th>
-                            <th>Opened</th>
-                            <th>Closed By</th>
-                            <th>Closed</th>
-                            <th>Starting Cash</th>
-                            <th>Closing Cash</th>
-                            <th>Transactions</th>
-                            <th>Sales</th>
-                        </tr>
-                    </thead>
-                    <tbody id="store-reports-body">
-                        <tr><td colspan="10">No data for the selected date.</td></tr>
-                    </tbody>
-                </table>
+            <div class="reports-sections">
+                <article class="report-card">
+                    <header class="report-card__header">
+                        <h3 class="report-card__title">Session Performance</h3>
+                        <p class="report-card__subtitle">Overview of each register session that opened on the selected date.</p>
+                    </header>
+                    <div class="reports-table-wrapper">
+                        <table class="reports-table">
+                            <thead>
+                                <tr>
+                                    <th>Session</th>
+                                    <th>Terminal</th>
+                                    <th>Opened By</th>
+                                    <th>Opened</th>
+                                    <th>Closed By</th>
+                                    <th>Closed</th>
+                                    <th>Starting Cash</th>
+                                    <th>Closing Cash</th>
+                                    <th>Transactions</th>
+                                    <th>Sales</th>
+                                </tr>
+                            </thead>
+                            <tbody id="store-reports-body">
+                                <tr><td colspan="10">No data for the selected date.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+                <article class="report-card">
+                    <header class="report-card__header">
+                        <h3 class="report-card__title">Itemized Sales</h3>
+                        <p class="report-card__subtitle">Product-level performance across every session for the day.</p>
+                    </header>
+                    <div class="reports-table-wrapper">
+                        <table class="reports-table">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Quantity Sold</th>
+                                    <th>Gross Sales</th>
+                                    <th>Cost</th>
+                                    <th>Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="store-reports-items-body">
+                                <tr><td colspan="5">No sales recorded for the selected date.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+                <article class="report-card">
+                    <header class="report-card__header">
+                        <h3 class="report-card__title">Transaction Register</h3>
+                        <p class="report-card__subtitle">Detailed receipt log with cashier attribution and line items.</p>
+                    </header>
+                    <div class="reports-table-wrapper">
+                        <table class="reports-table reports-table--transactions">
+                            <thead>
+                                <tr>
+                                    <th>Receipt #</th>
+                                    <th>Session</th>
+                                    <th>Terminal</th>
+                                    <th>Cashier</th>
+                                    <th>Timestamp</th>
+                                    <th>Items</th>
+                                    <th>Total</th>
+                                    <th>Line Items</th>
+                                </tr>
+                            </thead>
+                            <tbody id="store-reports-transactions-body">
+                                <tr><td colspan="8">No transactions recorded for the selected date.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
             </div>
         </section>
     </div>

@@ -31,6 +31,12 @@
     const reportsBody = document.getElementById('store-reports-body');
     const reportDateInput = document.getElementById('store-report-date');
     const reportSummary = document.querySelectorAll('[data-summary]');
+    const tenderInput = document.getElementById('store-amount-tendered');
+    const changeDueEl = document.getElementById('store-change-due');
+    const changeLabelEl = document.getElementById('store-change-label');
+    const changeContainer = document.getElementById('store-change-due-container');
+    const reportsItemsBody = document.getElementById('store-reports-items-body');
+    const reportsTransactionsBody = document.getElementById('store-reports-transactions-body');
 
     const state = {
         terminalKey: ensureTerminalKey(),
@@ -39,6 +45,8 @@
         cart: [],
         recent: [],
     };
+
+    let currentCartTotal = 0;
 
     function ensureTerminalKey() {
         try {
@@ -171,6 +179,12 @@
             completeSaleBtn.disabled = true;
             transactionCountEl.textContent = '0';
             transactionTotalEl.textContent = '$0.00';
+            currentCartTotal = 0;
+            if (tenderInput) {
+                tenderInput.value = '';
+                tenderInput.disabled = true;
+            }
+            updateChangeDue();
             return;
         }
         transactionEmptyEl.hidden = true;
@@ -222,6 +236,11 @@
         transactionItemsEl.appendChild(fragment);
         transactionCountEl.textContent = String(totalItems);
         transactionTotalEl.textContent = `$${totalAmount.toFixed(2)}`;
+        currentCartTotal = totalAmount;
+        if (tenderInput) {
+            tenderInput.disabled = false;
+        }
+        updateChangeDue();
         completeSaleBtn.disabled = !state.session;
     }
 
@@ -276,6 +295,51 @@
     function formatCurrency(value) {
         const amount = Number(value || 0);
         return `$${amount.toFixed(2)}`;
+    }
+
+    function parseAmount(value) {
+        if (value === null || value === undefined) {
+            return null;
+        }
+        const normalized = String(value).replace(/[^0-9.-]/g, '');
+        if (normalized.trim() === '' || normalized === '-' || normalized === '.' || normalized === '-.') {
+            return null;
+        }
+        const amount = Number(normalized);
+        return Number.isFinite(amount) ? amount : null;
+    }
+
+    function updateChangeDue() {
+        if (!changeDueEl || !changeLabelEl || !changeContainer) {
+            return;
+        }
+        if (!state.cart.length || currentCartTotal <= 0) {
+            changeContainer.dataset.state = 'even';
+            changeLabelEl.textContent = 'Change Due';
+            changeDueEl.textContent = formatCurrency(0);
+            return;
+        }
+        const tendered = tenderInput ? parseAmount(tenderInput.value) : null;
+        if (tendered === null) {
+            changeContainer.dataset.state = 'even';
+            changeLabelEl.textContent = 'Change Due';
+            changeDueEl.textContent = formatCurrency(0);
+            return;
+        }
+        const difference = Number((tendered - currentCartTotal).toFixed(2));
+        if (difference > 0) {
+            changeContainer.dataset.state = 'due';
+            changeLabelEl.textContent = 'Change Due';
+            changeDueEl.textContent = formatCurrency(difference);
+        } else if (difference < 0) {
+            changeContainer.dataset.state = 'owed';
+            changeLabelEl.textContent = 'Amount Owed';
+            changeDueEl.textContent = formatCurrency(Math.abs(difference));
+        } else {
+            changeContainer.dataset.state = 'even';
+            changeLabelEl.textContent = 'Exact Payment';
+            changeDueEl.textContent = formatCurrency(0);
+        }
     }
 
     function formatDateTime(value) {
@@ -442,6 +506,9 @@
 
         document.getElementById('store-refresh-reports').addEventListener('click', fetchReports);
         document.getElementById('store-print-reports').addEventListener('click', () => window.print());
+        if (tenderInput) {
+            tenderInput.addEventListener('input', updateChangeDue);
+        }
     }
 
     function addProductForm(product) {
@@ -563,6 +630,12 @@
                 }
             });
             reportsBody.innerHTML = '';
+            if (reportsItemsBody) {
+                reportsItemsBody.innerHTML = '';
+            }
+            if (reportsTransactionsBody) {
+                reportsTransactionsBody.innerHTML = '';
+            }
             if (!payload.sessions.length) {
                 const row = document.createElement('tr');
                 const cell = document.createElement('td');
@@ -570,6 +643,22 @@
                 cell.textContent = 'No data for the selected date.';
                 row.appendChild(cell);
                 reportsBody.appendChild(row);
+                if (reportsItemsBody) {
+                    const itemRow = document.createElement('tr');
+                    const itemCell = document.createElement('td');
+                    itemCell.colSpan = 5;
+                    itemCell.textContent = 'No sales recorded for the selected date.';
+                    itemRow.appendChild(itemCell);
+                    reportsItemsBody.appendChild(itemRow);
+                }
+                if (reportsTransactionsBody) {
+                    const txRow = document.createElement('tr');
+                    const txCell = document.createElement('td');
+                    txCell.colSpan = 8;
+                    txCell.textContent = 'No transactions recorded for the selected date.';
+                    txRow.appendChild(txCell);
+                    reportsTransactionsBody.appendChild(txRow);
+                }
                 return;
             }
             payload.sessions.forEach((session) => {
@@ -593,6 +682,79 @@
                 });
                 reportsBody.appendChild(row);
             });
+
+            if (reportsItemsBody) {
+                if (payload.items && payload.items.length) {
+                    payload.items.forEach((item) => {
+                        const row = document.createElement('tr');
+                        const cells = [
+                            item.product_name,
+                            item.quantity,
+                            formatCurrency(item.sales_total),
+                            formatCurrency(item.cost_total),
+                            formatCurrency(item.profit_total),
+                        ];
+                        cells.forEach((value) => {
+                            const cell = document.createElement('td');
+                            cell.textContent = String(value);
+                            row.appendChild(cell);
+                        });
+                        reportsItemsBody.appendChild(row);
+                    });
+                } else {
+                    const row = document.createElement('tr');
+                    const cell = document.createElement('td');
+                    cell.colSpan = 5;
+                    cell.textContent = 'No sales recorded for the selected date.';
+                    row.appendChild(cell);
+                    reportsItemsBody.appendChild(row);
+                }
+            }
+
+            if (reportsTransactionsBody) {
+                if (payload.transactions && payload.transactions.length) {
+                    payload.transactions.forEach((transaction) => {
+                        const row = document.createElement('tr');
+                        const cells = [
+                            `#${transaction.id}`,
+                            `#${transaction.session_id}`,
+                            transaction.terminal_key,
+                            transaction.user || '-',
+                            formatDateTime(transaction.created_at),
+                            transaction.item_count,
+                            formatCurrency(transaction.total),
+                        ];
+                        cells.forEach((value) => {
+                            const cell = document.createElement('td');
+                            cell.textContent = String(value);
+                            row.appendChild(cell);
+                        });
+                        const detailCell = document.createElement('td');
+                        const list = document.createElement('ul');
+                        if (transaction.items && transaction.items.length) {
+                            transaction.items.forEach((item) => {
+                                const li = document.createElement('li');
+                                li.textContent = `${item.quantity} × ${item.product_name} — ${formatCurrency(item.line_total)} at ${formatCurrency(item.product_price)} each`;
+                                list.appendChild(li);
+                            });
+                        } else {
+                            const li = document.createElement('li');
+                            li.textContent = 'No line items recorded.';
+                            list.appendChild(li);
+                        }
+                        detailCell.appendChild(list);
+                        row.appendChild(detailCell);
+                        reportsTransactionsBody.appendChild(row);
+                    });
+                } else {
+                    const row = document.createElement('tr');
+                    const cell = document.createElement('td');
+                    cell.colSpan = 8;
+                    cell.textContent = 'No transactions recorded for the selected date.';
+                    row.appendChild(cell);
+                    reportsTransactionsBody.appendChild(row);
+                }
+            }
         } catch (error) {
             showToast(error.message);
         }

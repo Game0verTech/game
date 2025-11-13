@@ -444,6 +444,28 @@
     max-height: 92vh;
 }
 
+.store-modal__dialog.xlarge {
+    width: min(1280px, 98vw);
+    max-height: 94vh;
+    gap: 28px;
+}
+
+.reports-dialog {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.reports-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 8px;
+    flex: 1 1 auto;
+}
+
 .store-modal__close {
     position: absolute;
     top: 16px;
@@ -566,6 +588,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 18px;
+    flex-shrink: 0;
 }
 
 .reports-summary .label {
@@ -611,6 +634,42 @@
     color: #021026;
 }
 
+.reports-sections {
+    display: grid;
+    gap: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    flex: 1 1 auto;
+}
+
+.report-card {
+    background: rgba(10, 18, 32, 0.92);
+    border: 1px solid rgba(30, 144, 255, 0.18);
+    border-radius: 20px;
+    padding: clamp(20px, 2.2vw, 28px);
+    box-shadow: 0 20px 50px rgba(3, 10, 22, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.report-card__header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.report-card__title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.report-card__subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
 .reports-table-wrapper {
     overflow-x: auto;
     border-radius: 16px;
@@ -627,10 +686,94 @@
     padding: 12px 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     text-align: left;
+    vertical-align: top;
 }
 
 .reports-table th {
     background: rgba(30, 144, 255, 0.12);
+    color: var(--text-primary);
+}
+
+.reports-table--transactions ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.reports-table--transactions li {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    word-break: break-word;
+}
+
+.transaction-payment {
+    margin-top: 18px;
+    padding: 16px 18px;
+    border: 1px solid rgba(30, 144, 255, 0.18);
+    border-radius: 14px;
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    align-items: flex-end;
+    background: rgba(12, 20, 34, 0.85);
+    flex-wrap: wrap;
+}
+
+.transaction-payment label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    flex: 1 1 auto;
+}
+
+.transaction-payment input {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(30, 144, 255, 0.25);
+    background: rgba(8, 16, 28, 0.9);
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.transaction-payment input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.change-due {
+    min-width: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.change-label {
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+}
+
+.change-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.change-due[data-state="due"] .change-value {
+    color: #2ecc71;
+}
+
+.change-due[data-state="owed"] .change-value {
+    color: #ff7675;
+}
+
+.change-due[data-state="even"] .change-value {
     color: var(--text-primary);
 }
 
@@ -660,6 +803,76 @@
 @media (max-width: 1100px) {
     .store-layout {
         grid-template-columns: 1fr;
+    }
+
+    .reports-sections {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .transaction-payment {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .change-due {
+        align-items: flex-start;
+    }
+}
+
+@media print {
+    body {
+        background: #ffffff;
+        color: #021026;
+    }
+
+    .store-app-shell,
+    .store-session-banner,
+    .store-toolbar,
+    .store-layout {
+        display: none !important;
+    }
+
+    #store-reports-modal {
+        position: static;
+        inset: auto;
+        padding: 0;
+        background: transparent;
+    }
+
+    #store-reports-modal .store-modal__dialog {
+        width: 100%;
+        max-height: none;
+        border: none;
+        box-shadow: none;
+        background: #ffffff;
+        color: #021026;
+    }
+
+    #store-reports-modal .store-modal__close,
+    #store-reports-modal .report-controls {
+        display: none;
+    }
+
+    #store-reports-modal .report-card {
+        background: #ffffff;
+        border-color: #dbe7fb;
+        box-shadow: none;
+        page-break-inside: avoid;
+    }
+
+    #store-reports-modal .reports-table th {
+        background: #f0f5ff;
+        color: #021026;
+    }
+
+    #store-reports-modal .reports-table td,
+    #store-reports-modal .reports-table th,
+    #store-reports-modal .report-card__subtitle,
+    #store-reports-modal .reports-summary .label,
+    #store-reports-modal .reports-table--transactions li {
+        color: #021026;
     }
 }
 

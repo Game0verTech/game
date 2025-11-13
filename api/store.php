@@ -131,6 +131,8 @@ try {
             respondSuccess([
                 'sessions' => array_map('formatSession', $sessions),
                 'summary' => $summary,
+                'items' => array_map('formatReportItem', store_item_sales_by_date($date)),
+                'transactions' => array_map('formatReportTransaction', store_transactions_by_date($date)),
             ]);
             break;
 
@@ -205,4 +207,44 @@ function formatRecentList(string $terminalKey, ?int $sessionId = null): array
             }, $transaction['items'] ?? []),
         ];
     }, $transactions);
+}
+
+function formatReportItem(array $item): array
+{
+    return [
+        'product_name' => $item['product_name'],
+        'quantity' => (int)$item['quantity'],
+        'sales_total' => $item['sales_total'],
+        'cost_total' => $item['cost_total'],
+        'profit_total' => $item['profit_total'],
+    ];
+}
+
+function formatReportTransaction(array $transaction): array
+{
+    $items = array_map('formatReportTransactionItem', $transaction['items'] ?? []);
+    $itemCount = 0;
+    foreach ($items as $item) {
+        $itemCount += $item['quantity'];
+    }
+    return [
+        'id' => (int)$transaction['id'],
+        'session_id' => (int)$transaction['session_id'],
+        'terminal_key' => $transaction['terminal_key'],
+        'user' => $transaction['created_by_username'] ?? '',
+        'created_at' => $transaction['created_at'],
+        'total' => number_format((float)$transaction['total'], 2, '.', ''),
+        'item_count' => $itemCount,
+        'items' => $items,
+    ];
+}
+
+function formatReportTransactionItem(array $item): array
+{
+    return [
+        'product_name' => $item['product_name'],
+        'quantity' => (int)$item['quantity'],
+        'product_price' => number_format((float)$item['product_price'], 2, '.', ''),
+        'line_total' => number_format((float)$item['line_total'], 2, '.', ''),
+    ];
 }

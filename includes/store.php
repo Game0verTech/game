@@ -432,7 +432,7 @@ function store_daily_summary(string $date): array
         COUNT(DISTINCT ss.id) AS sessions,
         COUNT(st.id) AS transactions,
         COALESCE(SUM(st.total), 0) AS revenue,
-        COALESCE(SUM(si.product_cost), 0) AS costs
+        COALESCE(SUM(si.product_cost * si.quantity), 0) AS costs
         FROM store_sessions ss
         LEFT JOIN store_transactions st ON st.session_id = ss.id
         LEFT JOIN store_transaction_items si ON si.transaction_id = st.id
@@ -446,4 +446,61 @@ function store_daily_summary(string $date): array
     $summary['costs'] = number_format((float)$summary['costs'], 2, '.', '');
     $summary['profit'] = number_format((float)$summary['revenue'] - (float)$summary['costs'], 2, '.', '');
     return $summary;
+}
+
+function store_item_sales_by_date(string $date): array
+{
+    ensure_store_schema();
+    $stmt = db()->prepare('SELECT
+        si.product_name,
+        SUM(si.quantity) AS quantity,
+        SUM(si.line_total) AS sales_total,
+        SUM(si.product_cost * si.quantity) AS cost_total
+        FROM store_sessions ss
+        JOIN store_transactions st ON st.session_id = ss.id
+        JOIN store_transaction_items si ON si.transaction_id = st.id
+        WHERE DATE(ss.opened_at) = :date
+        GROUP BY si.product_name
+        ORDER BY sales_total DESC, si.product_name');
+    $stmt->execute([':date' => $date]);
+    $items = $stmt->fetchAll();
+    foreach ($items as &$item) {
+        $sales = (float)($item['sales_total'] ?? 0);
+        $costs = (float)($item['cost_total'] ?? 0);
+        $item['sales_total'] = number_format($sales, 2, '.', '');
+        $item['cost_total'] = number_format($costs, 2, '.', '');
+        $item['profit_total'] = number_format($sales - $costs, 2, '.', '');
+    }
+    unset($item);
+    return $items;
+}
+
+function store_transactions_by_date(string $date): array
+{
+    ensure_store_schema();
+    $stmt = db()->prepare('SELECT
+        st.id,
+        st.session_id,
+        st.terminal_key,
+        st.created_by,
+        st.total,
+        st.created_at,
+        u.username AS created_by_username
+        FROM store_sessions ss
+        JOIN store_transactions st ON st.session_id = ss.id
+        LEFT JOIN users u ON u.id = st.created_by
+        WHERE DATE(ss.opened_at) = :date
+        ORDER BY st.created_at');
+    $stmt->execute([':date' => $date]);
+    $transactions = $stmt->fetchAll();
+    if (!$transactions) {
+        return [];
+    }
+    $itemStmt = db()->prepare('SELECT product_name, quantity, product_price, line_total FROM store_transaction_items WHERE transaction_id = :id ORDER BY id');
+    foreach ($transactions as &$transaction) {
+        $itemStmt->execute([':id' => $transaction['id']]);
+        $transaction['items'] = $itemStmt->fetchAll();
+    }
+    unset($transaction);
+    return $transactions;
 }
