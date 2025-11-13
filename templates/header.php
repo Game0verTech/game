@@ -15,7 +15,6 @@ $mainClass = trim($mainClass ?? 'container');
     <title><?= sanitize($pageTitle) ?></title>
     <link rel="stylesheet" href="/assets/css/site.css">
     <link rel="stylesheet" href="/assets/vendor/jquery-bracket/jquery.bracket.min.css">
-    <link rel="stylesheet" href="/assets/vendor/jquery-group/jquery.group.min.css">
     <?php foreach ($extraStylesheets as $sheet): ?>
         <link rel="stylesheet" href="<?= sanitize($sheet) ?>">
     <?php endforeach; ?>
@@ -24,7 +23,6 @@ $mainClass = trim($mainClass ?? 'container');
     <script src="/assets/vendor/underscore/underscore-min.js"></script>
     <script src="/assets/js/underscore-bridge.js"></script>
     <script src="/assets/vendor/jquery-bracket/jquery.bracket.min.js"></script>
-    <script src="/assets/vendor/jquery-group/jquery.group.min.js"></script>
     <?php foreach ($headScripts as $script): ?>
         <script src="<?= sanitize($script) ?>"></script>
     <?php endforeach; ?>
