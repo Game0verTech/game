@@ -15,6 +15,7 @@ function mailer_from_config(): PHPMailer
     $smtp = $config['smtp'] ?? [];
 
     $mail->isSMTP();
+    $mail->CharSet = 'UTF-8';
     $mail->Host = $smtp['host'] ?? 'localhost';
     $mail->Port = (int)($smtp['port'] ?? 25);
     $mail->SMTPAuth = !empty($smtp['username']);
@@ -31,7 +32,7 @@ function mailer_from_config(): PHPMailer
     return $mail;
 }
 
-function send_mail(string $toEmail, string $toName, string $subject, string $body): bool
+function send_mail(string $toEmail, string $toName, string $subject, string $body, ?string $altBody = null): bool
 {
     try {
         $mail = mailer_from_config();
@@ -39,6 +40,11 @@ function send_mail(string $toEmail, string $toName, string $subject, string $bod
         $mail->isHTML(true);
         $mail->Subject = $subject;
         $mail->Body = $body;
+        if ($altBody !== null) {
+            $mail->AltBody = $altBody;
+        } else {
+            $mail->AltBody = strip_tags($body);
+        }
         return $mail->send();
     } catch (Exception $e) {
         error_log('Mailer error: ' . $e->getMessage());
@@ -51,6 +57,7 @@ function send_test_email(array $smtpConfig, string $recipient): array
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
+        $mail->CharSet = 'UTF-8';
         $mail->Host = $smtpConfig['host'];
         $mail->Port = (int)$smtpConfig['port'];
         if (!empty($smtpConfig['encryption'])) {

@@ -38,11 +38,83 @@ switch ($action) {
         }
         $user = create_user($username, $email, $password, 'player', false);
         $token = $user['email_verify_token'];
-        $link = site_url('/?page=verify&token=' . urlencode($token));
-        $body = '<p>Hello ' . sanitize($username) . ',</p>';
-        $body .= '<p>Please verify your email by clicking the link below:</p>';
-        $body .= '<p><a href="' . $link . '">' . $link . '</a></p>';
-        if (!send_mail($email, $username, 'Verify your email', $body)) {
+        if (!$token) {
+            flash('error', 'Failed to generate a verification token. Please contact support.');
+            redirect('/?page=register');
+        }
+
+        $config = load_config();
+        $siteName = $config['site']['name'] ?? 'Play for Purpose Ohio';
+        $timezone = configured_timezone($config);
+        $verifyUrl = site_url('/?page=verify&token=' . urlencode($token));
+
+        $expiresAt = null;
+        if (!empty($user['email_verify_expires'])) {
+            $expiresAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $user['email_verify_expires'], new DateTimeZone($timezone));
+        }
+        if (!$expiresAt) {
+            $expiresAt = (new DateTimeImmutable('now', new DateTimeZone($timezone)))->modify('+1 day');
+        }
+        $expiresFormatted = $expiresAt->format('F j, Y g:i A T');
+
+        $messageLine = 'Thanks for signing up for Play for Purpose Game Night! Please confirm your email address to activate your account.';
+        $usernameHtml = sanitize($username);
+        $siteNameHtml = sanitize($siteName);
+        $verifyUrlHtml = sanitize($verifyUrl);
+        $expiresHtml = sanitize($expiresFormatted);
+        $messageHtml = sanitize($messageLine);
+
+        $body = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Verify your email</title>
+</head>
+<body style="background-color:#f5f5f5;margin:0;padding:0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+            <td align="center" style="padding:24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                    <tr>
+                        <td style="background-color:#1f3c88;color:#ffffff;padding:24px 32px;font-family:Arial, Helvetica, sans-serif;">
+                            <h1 style="margin:0;font-size:24px;font-weight:600;">{$siteNameHtml}</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:32px;font-family:Arial, Helvetica, sans-serif;color:#333333;font-size:16px;line-height:1.5;">
+                            <p style="margin-top:0;">Hello {$usernameHtml},</p>
+                            <p>{$messageHtml}</p>
+                            <p style="text-align:center;margin:32px 0;">
+                                <a href="{$verifyUrlHtml}" style="display:inline-block;background-color:#1f3c88;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:600;">Verify Email</a>
+                            </p>
+                            <p>Or copy and paste this link into your browser:</p>
+                            <p style="word-break:break-all;"><a href="{$verifyUrlHtml}" style="color:#1f3c88;text-decoration:none;">{$verifyUrlHtml}</a></p>
+                            <p style="margin-bottom:0;">This link expires on <strong>{$expiresHtml}</strong>. If it stops working, you can request a new verification email from the login page.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:24px 32px;background-color:#f0f3f9;font-family:Arial, Helvetica, sans-serif;color:#555555;font-size:12px;line-height:1.4;">
+                            <p style="margin:0;">If you didn’t create this account, you can safely ignore this message.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+HTML;
+
+        $altBody = "Hello {$username},\n\n"
+            . "{$messageLine}\n\n"
+            . "Verification link: {$verifyUrl}\n"
+            . "This link expires on {$expiresFormatted}. If it stops working, you can request a new verification email from the login page.\n\n"
+            . "If you didn't create this account, you can ignore this message.";
+
+        $subject = 'Verify your email for ' . $siteName;
+
+        if (!send_mail($email, $username, $subject, $body, $altBody)) {
             flash('error', 'Failed to send verification email.');
         } else {
             flash('success', 'Registration complete! Check your email to verify your account.');

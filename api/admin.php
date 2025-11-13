@@ -25,6 +25,7 @@ switch ($action) {
     case 'ban_user':
     case 'unban_user':
     case 'delete_user':
+    case 'verify_user':
         require_role('admin');
         break;
     default:
@@ -151,6 +152,19 @@ switch ($action) {
     case 'seed_test_player':
         $player = create_test_player();
         flash('success', 'Created test player ' . $player['username'] . ' with default password.');
+        redirect('/?page=admin&t=users');
+
+    case 'verify_user':
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        if ($targetId === 0) {
+            flash('error', 'User not specified.');
+            redirect('/?page=admin&t=users');
+        }
+        if (!manually_verify_user($targetId)) {
+            flash('error', 'User not found.');
+        } else {
+            flash('success', 'User verified successfully.');
+        }
         redirect('/?page=admin&t=users');
 
     case 'ban_user':

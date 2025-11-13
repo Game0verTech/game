@@ -145,6 +145,9 @@ if ($step === 3) {
         }
         if (!$errors && $action === 'save') {
             $config = [
+                'app' => [
+                    'timezone' => 'America/New_York',
+                ],
                 'db' => $_SESSION['install']['db'],
                 'smtp' => $smtp,
                 'site' => [

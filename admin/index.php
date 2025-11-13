@@ -202,6 +202,17 @@ if ($isTournamentTab) {
                                                 <span class="sr-only">Save role</span>
                                             </button>
                                         </form>
+                                        <?php if ((int)$account['is_active'] !== 1): ?>
+                                            <form method="post" action="/api/admin.php" class="inline">
+                                                <input type="hidden" name="action" value="verify_user">
+                                                <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                                                <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
+                                                <button type="submit" class="icon-btn" data-tooltip="Verify user" aria-label="Verify <?= sanitize($account['username']) ?>">
+                                                    <span aria-hidden="true">✔️</span>
+                                                    <span class="sr-only">Verify user</span>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
                                         <form method="post" action="/api/admin.php" class="inline">
                                             <input type="hidden" name="action" value="<?= $isBanned ? 'unban_user' : 'ban_user' ?>">
                                             <input type="hidden" name="_token" value="<?= csrf_token() ?>">
