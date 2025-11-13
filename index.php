@@ -11,6 +11,7 @@ $allowedPages = [
     'dashboard' => __DIR__ . '/pages/user/dashboard.php',
     'verify' => __DIR__ . '/pages/user/verify.php',
     'admin' => __DIR__ . '/admin/index.php',
+    'store' => __DIR__ . '/pages/admin/store.php',
 ];
 
 if (!array_key_exists($page, $allowedPages)) {
