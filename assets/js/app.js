@@ -752,6 +752,7 @@ $(function () {
                 var matches = matchesContainer.find('.bracket-match');
                 var roundBottom = 0;
 
+                var previousBottom = null;
                 matches.each(function () {
                     var matchEl = $(this);
                     matchEl.css({ position: 'absolute' });
@@ -793,6 +794,12 @@ $(function () {
                             top = 0;
                         }
                     }
+                    if (previousBottom !== null) {
+                        var minTop = previousBottom + baseSpacing;
+                        if (top < minTop) {
+                            top = minTop;
+                        }
+                    }
                     if (top < 0) {
                         top = 0;
                     }
@@ -807,6 +814,7 @@ $(function () {
                     if (bottom > roundBottom) {
                         roundBottom = bottom;
                     }
+                    previousBottom = bottom;
                 });
 
                 if (!roundBottom) {
@@ -883,6 +891,19 @@ $(function () {
             return;
         }
 
+        var container = view.closest('.bracket-container');
+        var zoom = 1;
+        if (container.length) {
+            try {
+                var computed = window.getComputedStyle(container[0]);
+                var zoomValue = computed ? parseFloat(computed.getPropertyValue('--bracket-zoom')) : NaN;
+                if (!Number.isNaN(zoomValue) && zoomValue > 0) {
+                    zoom = zoomValue;
+                }
+            } catch (err) {
+                zoom = 1;
+            }
+        }
         var width = columns[0].scrollWidth;
         var height = columns[0].scrollHeight;
         svg.attr('width', width);
@@ -918,10 +939,11 @@ $(function () {
             var startRect = source[0].getBoundingClientRect();
             var endRect = team[0].getBoundingClientRect();
             var columnsRect = columns[0].getBoundingClientRect();
-            var startX = startRect.right - columnsRect.left;
-            var startY = startRect.top - columnsRect.top + startRect.height / 2;
-            var endX = endRect.left - columnsRect.left;
-            var endY = endRect.top - columnsRect.top + endRect.height / 2;
+            var inverseZoom = zoom && zoom > 0 ? 1 / zoom : 1;
+            var startX = (startRect.right - columnsRect.left) * inverseZoom;
+            var startY = (startRect.top - columnsRect.top + startRect.height / 2) * inverseZoom;
+            var endX = (endRect.left - columnsRect.left) * inverseZoom;
+            var endY = (endRect.top - columnsRect.top + endRect.height / 2) * inverseZoom;
             var midX = startX + (endX - startX) / 2;
             var path = document.createElementNS(ns, 'path');
             path.setAttribute('d', 'M' + startX + ' ' + startY + ' H' + midX + ' V' + endY + ' H' + endX);
