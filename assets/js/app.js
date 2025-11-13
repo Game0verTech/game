@@ -402,6 +402,62 @@ $(function () {
         return Array.isArray(node) && node.length >= 2 && !Array.isArray(node[0]) && !Array.isArray(node[1]);
     }
 
+    function hasAssignedCompetitor(meta) {
+        if (!meta || typeof meta !== 'object') {
+            return false;
+        }
+        var players = [meta.player1, meta.player2];
+        return players.some(function (player) {
+            if (!player || typeof player !== 'object') {
+                return false;
+            }
+            if (player.id) {
+                return true;
+            }
+            if (player.name && player.name !== 'TBD' && player.name !== 'BYE') {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    function hasVisibleMatchSource(meta) {
+        if (!meta || typeof meta !== 'object' || !meta.sources || typeof meta.sources !== 'object') {
+            return false;
+        }
+        return Object.keys(meta.sources).some(function (key) {
+            var source = meta.sources[key];
+            if (!source || typeof source !== 'object') {
+                return false;
+            }
+            if (!source.stage) {
+                return false;
+            }
+            var hasRound = source.round !== undefined && source.round !== null;
+            var hasMatchIndex = source.match_index !== undefined && source.match_index !== null;
+            return hasRound && hasMatchIndex;
+        });
+    }
+
+    function shouldRenderMatchNode(meta, score1, score2) {
+        if (!meta || typeof meta !== 'object') {
+            return false;
+        }
+        if (meta.match_id) {
+            return true;
+        }
+        if (hasAssignedCompetitor(meta)) {
+            return true;
+        }
+        if (hasVisibleMatchSource(meta)) {
+            return true;
+        }
+        if (score1 !== null || score2 !== null) {
+            return true;
+        }
+        return false;
+    }
+
     function flattenResults(results) {
         var matches = [];
         (function walk(node) {
@@ -469,6 +525,81 @@ $(function () {
     function parseScore(value) {
         var score = parseInt(value, 10);
         return isNaN(score) ? null : score;
+    }
+
+    var BRACKET_ZOOM_MIN = 0.6;
+    var BRACKET_ZOOM_MAX = 1.6;
+    var BRACKET_ZOOM_STEP = 0.1;
+
+    function getBracketZoom(container) {
+        var zoom = parseFloat(container.data('bracketZoom'));
+        if (Number.isNaN(zoom) || !zoom) {
+            zoom = 1;
+        }
+        return zoom;
+    }
+
+    function clampZoom(value) {
+        if (value < BRACKET_ZOOM_MIN) {
+            return BRACKET_ZOOM_MIN;
+        }
+        if (value > BRACKET_ZOOM_MAX) {
+            return BRACKET_ZOOM_MAX;
+        }
+        return Math.round(value * 100) / 100;
+    }
+
+    function updateZoomButtonState(container) {
+        var controls = container.children('.bracket-zoom-controls');
+        if (!controls.length) {
+            return;
+        }
+        var zoom = getBracketZoom(container);
+        var zoomIn = controls.find('[data-action="zoom-in"]');
+        var zoomOut = controls.find('[data-action="zoom-out"]');
+        zoomIn.prop('disabled', zoom >= BRACKET_ZOOM_MAX - 0.001);
+        zoomOut.prop('disabled', zoom <= BRACKET_ZOOM_MIN + 0.001);
+    }
+
+    function applyBracketZoom(container, zoom) {
+        var clamped = clampZoom(zoom);
+        var current = getBracketZoom(container);
+        if (Math.abs(current - clamped) < 0.001) {
+            updateZoomButtonState(container);
+            return;
+        }
+        container.data('bracketZoom', clamped);
+        container.css('--bracket-zoom', clamped);
+        updateZoomButtonState(container);
+        if (container.find('.bracket-view').length) {
+            refreshBracketGeometry(container);
+        }
+    }
+
+    function ensureZoomControls(container) {
+        var controls = container.children('.bracket-zoom-controls');
+        if (!controls.length) {
+            controls = $('<div class="bracket-zoom-controls" role="group" aria-label="Bracket zoom controls"></div>');
+            var zoomOut = $('<button type="button" class="bracket-zoom-button" data-action="zoom-out" aria-label="Zoom out" title="Zoom out">&minus;</button>');
+            var zoomIn = $('<button type="button" class="bracket-zoom-button" data-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>');
+            controls.append(zoomOut, zoomIn);
+            container.append(controls);
+        }
+
+        container.css('--bracket-zoom', getBracketZoom(container));
+
+        controls.off('click.zoom').on('click.zoom', 'button', function (event) {
+            event.preventDefault();
+            var action = $(this).data('action');
+            var current = getBracketZoom(container);
+            if (action === 'zoom-in') {
+                applyBracketZoom(container, current + BRACKET_ZOOM_STEP);
+            } else if (action === 'zoom-out') {
+                applyBracketZoom(container, current - BRACKET_ZOOM_STEP);
+            }
+        });
+
+        updateZoomButtonState(container);
     }
 
     function buildTeamElement(options) {
@@ -1025,6 +1156,8 @@ $(function () {
             columns.append(roundEl);
         });
 
+        ensureZoomControls(container);
+
         return true;
     }
 
@@ -1071,6 +1204,7 @@ $(function () {
             }
             var stageColumns = $('<div class="bracket-stage__columns"></div>');
             stageEl.append(stageColumns);
+            var stageHasMatches = false;
 
             rounds.forEach(function (round, roundIndex) {
                 if (!Array.isArray(round) || !round.length) {
@@ -1088,6 +1222,7 @@ $(function () {
                 roundEl.append($('<div class="bracket-round__title"></div>').text(roundTitle));
                 var matchesContainer = $('<div class="bracket-round__matches"></div>');
                 roundEl.append(matchesContainer);
+                var roundHasMatches = false;
 
                 round.forEach(function (match, matchIndex) {
                     if (!Array.isArray(match)) {
@@ -1097,6 +1232,9 @@ $(function () {
                     var matchId = meta.match_id || meta.matchId || null;
                     var score1 = parseScore(match[0]);
                     var score2 = parseScore(match[1]);
+                    if (!shouldRenderMatchNode(meta, score1, score2)) {
+                        return;
+                    }
                     var matchNumber = meta.match_number || matchIndex + 1;
                     var roundLabel = meta.round_number || roundNumber;
                     var matchEl = $('<div class="bracket-match"></div>')
@@ -1109,6 +1247,7 @@ $(function () {
                         matchEl.attr('data-match-id', matchId);
                     }
                     matchesContainer.append(matchEl);
+                    roundHasMatches = true;
 
                     var winnerMeta = meta && meta.winner && meta.winner.id ? meta.winner : null;
                     var sources = meta.sources && typeof meta.sources === 'object' ? meta.sources : {};
@@ -1148,11 +1287,18 @@ $(function () {
                     });
                 });
 
-                stageColumns.append(roundEl);
+                if (roundHasMatches) {
+                    stageColumns.append(roundEl);
+                    stageHasMatches = true;
+                }
             });
 
-            columns.append(stageEl);
+            if (stageHasMatches) {
+                columns.append(stageEl);
+            }
         });
+
+        ensureZoomControls(container);
 
         return true;
     }
