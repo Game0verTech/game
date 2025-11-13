@@ -1080,16 +1080,25 @@ button.danger:focus-visible,
 
 .bracket-container {
     position: relative;
-    overflow-x: auto;
+    overflow: auto;
     padding: clamp(32px, 4vw, 52px);
     border: 1px solid rgba(30, 144, 255, 0.28);
     border-radius: 26px;
     background: radial-gradient(circle at top left, rgba(30, 144, 255, 0.12), transparent 55%),
         linear-gradient(150deg, rgba(8, 14, 26, 0.95), rgba(6, 12, 24, 0.9));
-    min-height: 360px;
     box-shadow: var(--shadow-elevated);
     max-width: 100%;
+    cursor: grab;
     --bracket-zoom: 1;
+    --bracket-match-min-width: 192px;
+    --bracket-match-width: 232px;
+    --bracket-match-max-width: 288px;
+    --bracket-label-column-width: max-content;
+}
+
+.bracket-container.is-panning {
+    cursor: grabbing;
+    user-select: none;
 }
 
 .bracket-zoom-controls {
@@ -1164,8 +1173,8 @@ button.danger:focus-visible,
 .bracket-columns {
     position: relative;
     display: flex;
-    gap: clamp(64px, 6vw, 132px);
-    padding: 8px clamp(16px, 4vw, 48px) clamp(40px, 4.5vw, 64px) 0;
+    gap: clamp(40px, 4.75vw, 96px);
+    padding: 8px clamp(12px, 3vw, 32px) clamp(36px, 4vw, 56px) 0;
     min-width: max-content;
     z-index: 1;
 }
@@ -1240,7 +1249,7 @@ button.danger:focus-visible,
 
 .bracket-stage__columns {
     display: flex;
-    gap: clamp(52px, 5.5vw, 112px);
+    gap: clamp(36px, 4.25vw, 88px);
     min-width: max-content;
 }
 
@@ -1253,8 +1262,8 @@ button.danger:focus-visible,
 
 .bracket-round {
     position: relative;
-    width: clamp(250px, 20vw, 320px);
-    padding-right: clamp(16px, 2vw, 28px);
+    width: clamp(var(--bracket-match-min-width, 192px), var(--bracket-match-width, 232px), var(--bracket-match-max-width, 288px));
+    padding-right: clamp(12px, 1.5vw, 20px);
 }
 
 
@@ -1273,7 +1282,7 @@ button.danger:focus-visible,
 }
 
 .bracket-match {
-    width: clamp(250px, 20vw, 320px);
+    width: clamp(var(--bracket-match-min-width, 192px), var(--bracket-match-width, 232px), var(--bracket-match-max-width, 288px));
     border-radius: 18px;
     border: 1px solid var(--stage-accent-soft);
     background: var(--stage-match-bg);
@@ -1283,15 +1292,16 @@ button.danger:focus-visible,
 
 .bracket-match .team {
     position: relative;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, var(--bracket-label-column-width, max-content)) auto;
+    column-gap: clamp(8px, 1.4vw, 12px);
     align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 12px 18px;
+    padding: 12px 14px;
     background: var(--stage-team-bg);
     color: var(--text-primary);
-    font-size: 0.96rem;
-    letter-spacing: 0.01em;
+    font-size: 1.04rem;
+    line-height: 1.32;
+    letter-spacing: 0.012em;
     transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
@@ -1300,20 +1310,36 @@ button.danger:focus-visible,
 }
 
 .bracket-match .team .label {
-    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.bracket-match .team .label-text {
+    display: inline-block;
     min-width: 0;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: 0.01em;
+    max-width: 100%;
+}
+
+.bracket-container.has-uniform-labels .bracket-match .team .label-text {
+    flex: 0 0 var(--bracket-team-label-width);
+    width: var(--bracket-team-label-width);
+    max-width: 100%;
 }
 
 .bracket-match .team .score {
-    width: 34px;
     text-align: right;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: var(--stage-score-color);
+    justify-self: end;
+    min-width: 2ch;
 }
 
 .bracket-match .team .score.is-hidden {
@@ -1324,7 +1350,7 @@ button.danger:focus-visible,
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 8px;
+    margin-left: 2px;
     width: 24px;
     height: 24px;
     border-radius: 6px;
@@ -1340,49 +1366,54 @@ button.danger:focus-visible,
     font-weight: 700;
 }
 
-.bracket-match .team::after {
-    content: attr(data-status-label);
-    position: absolute;
-    top: 50%;
-    right: 12px;
-    transform: translateY(-50%);
-    font-size: 0.72rem;
-    font-weight: 600;
+.bracket-match .team .status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 1;
+    font-size: 0.78rem;
+    font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    padding: 3px 8px;
+    padding: 4px 10px;
     border-radius: 999px;
-    background: rgba(30, 144, 255, 0.15);
-    color: rgba(214, 233, 255, 0.9);
-    box-shadow: inset 0 0 0 1px rgba(30, 144, 255, 0.25);
+    background: rgba(30, 144, 255, 0.18);
+    color: rgba(214, 233, 255, 0.92);
+    box-shadow: inset 0 0 0 1px rgba(30, 144, 255, 0.28);
 }
 
-.bracket-match .team.status-tbd::after {
+.bracket-container.is-measuring-labels .bracket-match .team .status-badge {
+    display: none !important;
+}
+
+.bracket-match .team.status-tbd .status-badge {
     background: rgba(124, 139, 169, 0.2);
     color: rgba(210, 220, 240, 0.72);
 }
+
+.bracket-match .team.status-ready .status-badge {
+    background: rgba(30, 144, 255, 0.32);
+    color: rgba(215, 236, 255, 0.96);
+}
+
+.bracket-match .team.status-win .status-badge {
+    background: rgba(55, 184, 130, 0.25);
+    color: rgba(176, 246, 213, 0.96);
+}
+
+.bracket-match .team.status-loss .status-badge {
+    background: rgba(214, 103, 128, 0.22);
+    color: rgba(253, 198, 210, 0.9);
+}
+
 
 .bracket-match .team.status-tbd {
     color: rgba(196, 205, 226, 0.72);
 }
 
-.bracket-match .team.status-ready::after {
-    background: rgba(30, 144, 255, 0.32);
-    color: rgba(215, 236, 255, 0.96);
-}
-
 .bracket-match .team.status-ready {
     background: rgba(24, 44, 72, 0.95);
-}
-
-.bracket-match .team.status-win::after {
-    background: rgba(55, 184, 130, 0.25);
-    color: rgba(176, 246, 213, 0.96);
-}
-
-.bracket-match .team.status-loss::after {
-    background: rgba(214, 103, 128, 0.22);
-    color: rgba(253, 198, 210, 0.9);
 }
 
 .bracket-match .team.is-selectable {
