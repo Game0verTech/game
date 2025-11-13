@@ -38,6 +38,313 @@ $(function () {
         return mode;
     }
 
+    function toInteger(value, fallback) {
+        var number = parseInt(value, 10);
+        return isFinite(number) ? number : fallback;
+    }
+
+    function toScore(value) {
+        if (value === null || value === undefined || value === '') {
+            return null;
+        }
+        var number = typeof value === 'number' ? value : parseFloat(value);
+        return isFinite(number) ? number : null;
+    }
+
+    function buildGroupTeamMetadata(teams) {
+        var metadata = {};
+        if (!Array.isArray(teams)) {
+            return metadata;
+        }
+        teams.forEach(function (team) {
+            if (!team || typeof team !== 'object') {
+                return;
+            }
+            var id = toInteger(team.id, null);
+            if (id === null) {
+                return;
+            }
+            metadata[id] = {
+                player_id: toInteger(team.player_id, null),
+                is_bye: !!team.is_bye
+            };
+        });
+        return metadata;
+    }
+
+    function convertLegacyMatrix(results) {
+        if (!Array.isArray(results)) {
+            return [];
+        }
+        var matches = [];
+        var matchId = 1;
+        for (var i = 0; i < results.length; i++) {
+            var row = Array.isArray(results[i]) ? results[i] : [];
+            for (var j = i + 1; j < row.length; j++) {
+                var cell = row[j];
+                var aScore = null;
+                var bScore = null;
+                if (Array.isArray(cell)) {
+                    aScore = toScore(cell[0]);
+                    bScore = toScore(cell[1]);
+                }
+                matches.push({
+                    id: matchId++,
+                    round: 0,
+                    a: { team: i, score: aScore },
+                    b: { team: j, score: bScore }
+                });
+            }
+        }
+        return matches;
+    }
+
+    function buildRoundRobinMatches(teams) {
+        if (!Array.isArray(teams) || teams.length < 2) {
+            return [];
+        }
+        var placeholders = teams.slice();
+        var hasBye = placeholders.some(function (team) {
+            return team && team.is_bye;
+        });
+        if (placeholders.length % 2 === 1) {
+            if (!hasBye) {
+                var maxId = placeholders.reduce(function (max, team) {
+                    var id = toInteger(team && team.id, 0);
+                    return id > max ? id : max;
+                }, 0);
+                placeholders.push({ id: maxId + 1, name: 'BYE', is_bye: true });
+            } else {
+                placeholders.push({ id: placeholders.length + 1, name: 'BYE', is_bye: true });
+            }
+        }
+        var total = placeholders.length;
+        if (total % 2 === 1) {
+            placeholders.push({ id: total + 1, name: 'BYE', is_bye: true });
+            total = placeholders.length;
+        }
+        var arrangement = [];
+        for (var i = 0; i < total; i++) {
+            arrangement.push(i);
+        }
+        var rounds = total - 1;
+        var half = total / 2;
+        var matches = [];
+        var matchId = 1;
+        for (var round = 0; round < rounds; round++) {
+            for (var pairIndex = 0; pairIndex < half; pairIndex++) {
+                var homeIndex = arrangement[pairIndex];
+                var awayIndex = arrangement[total - 1 - pairIndex];
+                var homeTeam = placeholders[homeIndex];
+                var awayTeam = placeholders[awayIndex];
+                if ((homeTeam && homeTeam.is_bye) || (awayTeam && awayTeam.is_bye)) {
+                    continue;
+                }
+                matches.push({
+                    id: matchId++,
+                    round: round + 1,
+                    a: { team: homeIndex, score: null },
+                    b: { team: awayIndex, score: null }
+                });
+            }
+            var fixed = arrangement[0];
+            var rest = arrangement.slice(1);
+            if (rest.length) {
+                rest.unshift(rest.pop());
+            }
+            arrangement = [fixed].concat(rest);
+        }
+        return matches;
+    }
+
+    function normalizeGroupData(raw) {
+        if (!raw) {
+            return null;
+        }
+        var base = raw.init && typeof raw.init === 'object' ? raw.init : raw;
+        var meta = {};
+        if (raw.meta && typeof raw.meta === 'object') {
+            meta = $.extend(true, {}, raw.meta);
+        } else if (base.meta && typeof base.meta === 'object') {
+            meta = $.extend(true, {}, base.meta);
+        }
+
+        var rawTeams = Array.isArray(base.teams) ? base.teams : [];
+        var teams = [];
+        var maxId = 0;
+        for (var i = 0; i < rawTeams.length; i++) {
+            var original = rawTeams[i] || {};
+            var id = toInteger(original.id, i + 1);
+            if (id > maxId) {
+                maxId = id;
+            }
+            var name = typeof original.name === 'string' && original.name.trim() !== '' ? original.name : 'Team ' + id;
+            var playerId = toInteger(original.player_id, null);
+            var isBye = !!original.is_bye;
+            if (!isBye && meta.bye_team_id && id === meta.bye_team_id) {
+                isBye = true;
+            } else if (!isBye && typeof name === 'string' && name.trim().toUpperCase() === 'BYE') {
+                isBye = true;
+            }
+            teams.push({
+                id: id,
+                name: name,
+                player_id: playerId,
+                is_bye: isBye
+            });
+        }
+
+        if (teams.length > 0 && teams.length % 2 === 1) {
+            var byeId = maxId + 1;
+            teams.push({ id: byeId, name: 'BYE', is_bye: true });
+            meta.bye_team_id = byeId;
+        } else if (!meta.bye_team_id) {
+            for (var t = 0; t < teams.length; t++) {
+                if (teams[t].is_bye) {
+                    meta.bye_team_id = teams[t].id;
+                    break;
+                }
+            }
+        }
+
+        meta.has_bye = !!meta.bye_team_id;
+        meta.format = meta.format || 'round-robin';
+
+        var matches = [];
+        if (Array.isArray(base.matches) && base.matches.length) {
+            for (var m = 0; m < base.matches.length; m++) {
+                var match = base.matches[m];
+                if (!match || typeof match !== 'object') {
+                    continue;
+                }
+                var homeIndex = toInteger(match.a && match.a.team, null);
+                var awayIndex = toInteger(match.b && match.b.team, null);
+                if (homeIndex === null || awayIndex === null) {
+                    continue;
+                }
+                matches.push({
+                    id: toInteger(match.id, matches.length + 1),
+                    round: Math.max(0, toInteger(match.round, 0)),
+                    a: {
+                        team: homeIndex,
+                        score: toScore(match.a && match.a.score)
+                    },
+                    b: {
+                        team: awayIndex,
+                        score: toScore(match.b && match.b.score)
+                    }
+                });
+            }
+        } else if (Array.isArray(base.results) && base.results.length) {
+            matches = convertLegacyMatrix(base.results);
+        }
+
+        if (!matches.length) {
+            matches = buildRoundRobinMatches(teams);
+        } else {
+            matches.sort(function (left, right) {
+                if (left.round === right.round) {
+                    return left.id - right.id;
+                }
+                return left.round - right.round;
+            });
+        }
+
+        meta.rounds = matches.reduce(function (max, match) {
+            return Math.max(max, match.round || 0);
+        }, teams.length > 1 ? teams.length - 1 : 0);
+
+        return {
+            teams: teams,
+            matches: matches,
+            meta: meta
+        };
+    }
+
+    function buildGroupSavePayload(updated, metaState, teamMetadata) {
+        var teams = [];
+        var metadata = teamMetadata || {};
+        if (updated && Array.isArray(updated.teams)) {
+            updated.teams.forEach(function (team, index) {
+                if (!team || typeof team !== 'object') {
+                    return;
+                }
+                var id = toInteger(team.id, index + 1);
+                if (id === null) {
+                    return;
+                }
+                var entry = {
+                    id: id,
+                    name: typeof team.name === 'string' ? team.name : 'Team ' + id
+                };
+                if (metadata[id] && metadata[id].player_id !== null) {
+                    entry.player_id = metadata[id].player_id;
+                }
+                if ((metadata[id] && metadata[id].is_bye) || (entry.name && entry.name.trim().toUpperCase() === 'BYE')) {
+                    entry.is_bye = true;
+                }
+                teams.push(entry);
+            });
+        }
+
+        var matches = [];
+        if (updated && Array.isArray(updated.matches)) {
+            updated.matches.forEach(function (match) {
+                if (!match || typeof match !== 'object') {
+                    return;
+                }
+                var homeIndex = toInteger(match.a && match.a.team, null);
+                var awayIndex = toInteger(match.b && match.b.team, null);
+                if (homeIndex === null || awayIndex === null) {
+                    return;
+                }
+                matches.push({
+                    id: toInteger(match.id, matches.length + 1),
+                    round: Math.max(0, toInteger(match.round, 0)),
+                    a: {
+                        team: homeIndex,
+                        score: toScore(match.a && match.a.score)
+                    },
+                    b: {
+                        team: awayIndex,
+                        score: toScore(match.b && match.b.score)
+                    }
+                });
+            });
+        }
+
+        var meta = $.extend(true, {}, metaState || {});
+        var playerMap = {};
+        teams.forEach(function (team) {
+            if (team.player_id !== undefined && team.player_id !== null) {
+                playerMap[team.id] = team.player_id;
+            }
+        });
+        meta.player_map = playerMap;
+        meta.has_bye = teams.some(function (team) {
+            return !!team.is_bye;
+        });
+        var byeId = null;
+        for (var i = 0; i < teams.length; i++) {
+            if (teams[i].is_bye) {
+                byeId = teams[i].id;
+                break;
+            }
+        }
+        meta.bye_team_id = byeId;
+        meta.rounds = matches.reduce(function (max, match) {
+            return Math.max(max, match.round || 0);
+        }, meta.rounds || 0);
+        meta.format = meta.format || 'round-robin';
+        meta.generated_at = new Date().toISOString();
+
+        return {
+            teams: teams,
+            matches: matches,
+            meta: meta
+        };
+    }
+
     function clearTeamHighlight(container) {
         if (!container || !container.length) {
             return;
@@ -1852,24 +2159,57 @@ $(function () {
 
     $('.group-container').each(function () {
         var container = $(this);
-        var data = parseJsonPayload(container, 'group');
-        var mode = container.data('mode');
+        var rawData = parseJsonPayload(container, 'group');
+        var mode = normalizeMode(container.data('mode'));
         var field = container.data('target');
-        if (!data) {
+
+        if (!rawData) {
             return;
         }
+
         if (typeof container.group !== 'function') {
             window.console && console.warn && console.warn('Group plugin is unavailable.');
             return;
         }
-        var options = { data: data };
-        if (mode !== 'admin') {
-            options.readonly = true;
-        } else if (field) {
-            options.onChange = function (updated) {
-                $('#' + field).val(JSON.stringify(updated));
+
+        if (typeof window._ !== 'function') {
+            window.console && console.error && console.error('Underscore is required for the group view.');
+            return;
+        }
+
+        var normalized = normalizeGroupData(rawData);
+        if (!normalized) {
+            return;
+        }
+
+        var metaState = $.extend(true, {}, normalized.meta || {});
+        var teamMetadata = buildGroupTeamMetadata(normalized.teams);
+        var initialPayload = {
+            teams: normalized.teams,
+            matches: normalized.matches
+        };
+
+        var options = { init: initialPayload };
+
+        if (mode === 'admin' && field) {
+            var target = $('#' + field);
+            if (target.length) {
+                target.val(JSON.stringify({
+                    teams: normalized.teams,
+                    matches: normalized.matches,
+                    meta: metaState
+                }));
+            }
+            options.save = function (updated) {
+                var payload = buildGroupSavePayload(updated, metaState, teamMetadata);
+                metaState = $.extend(true, {}, payload.meta || {});
+                teamMetadata = buildGroupTeamMetadata(payload.teams);
+                if (target.length) {
+                    target.val(JSON.stringify(payload));
+                }
             };
         }
+
         container.group(options);
     });
 

@@ -370,6 +370,116 @@ function available_tournaments_for_user(): array
     return $stmt->fetchAll();
 }
 
+function build_round_robin_groups(array $players): array
+{
+    $teams = [];
+    $playerMap = [];
+    $nextId = 1;
+
+    foreach ($players as $participant) {
+        $team = [
+            'id' => $nextId,
+            'name' => $participant['username'] ?? ('Player ' . $nextId),
+            'player_id' => isset($participant['user_id']) ? (int)$participant['user_id'] : null,
+        ];
+
+        if ($team['player_id'] !== null) {
+            $playerMap[$team['id']] = $team['player_id'];
+        }
+
+        $teams[] = $team;
+        $nextId++;
+    }
+
+    $hasBye = count($teams) % 2 === 1;
+    $byeTeamId = null;
+
+    if ($hasBye) {
+        $byeTeamId = $nextId;
+        $teams[] = [
+            'id' => $byeTeamId,
+            'name' => 'BYE',
+            'is_bye' => true,
+        ];
+        $nextId++;
+    }
+
+    $teamCount = count($teams);
+    $matches = [];
+    $matchId = 1;
+    $roundCount = 0;
+
+    if ($teamCount > 1) {
+        $roundCount = $teamCount - 1;
+        $half = (int)($teamCount / 2);
+        $positions = range(0, $teamCount - 1);
+
+        for ($round = 0; $round < $roundCount; $round++) {
+            for ($i = 0; $i < $half; $i++) {
+                $homeIndex = $positions[$i];
+                $awayIndex = $positions[$teamCount - 1 - $i];
+
+                $homeTeam = $teams[$homeIndex];
+                $awayTeam = $teams[$awayIndex];
+
+                if (!empty($homeTeam['is_bye']) || !empty($awayTeam['is_bye'])) {
+                    continue;
+                }
+
+                $matches[] = [
+                    'id' => $matchId++,
+                    'round' => $round + 1,
+                    'a' => [
+                        'team' => $homeIndex,
+                        'score' => null,
+                    ],
+                    'b' => [
+                        'team' => $awayIndex,
+                        'score' => null,
+                    ],
+                ];
+            }
+
+            $fixed = $positions[0];
+            $rest = array_slice($positions, 1);
+            if (!empty($rest)) {
+                array_unshift($rest, array_pop($rest));
+            }
+            $positions = array_merge([$fixed], $rest);
+        }
+    }
+
+    $sanitizedTeams = array_map(static function (array $team): array {
+        $entry = [
+            'id' => (int)$team['id'],
+            'name' => (string)$team['name'],
+        ];
+
+        if (array_key_exists('player_id', $team) && $team['player_id'] !== null) {
+            $entry['player_id'] = (int)$team['player_id'];
+        }
+
+        if (!empty($team['is_bye'])) {
+            $entry['is_bye'] = true;
+        }
+
+        return $entry;
+    }, $teams);
+
+    return [
+        'teams' => $sanitizedTeams,
+        'matches' => $matches,
+        'meta' => [
+            'format' => 'round-robin',
+            'rounds' => $roundCount,
+            'has_bye' => $hasBye,
+            'bye_team_id' => $byeTeamId,
+            'player_map' => $playerMap,
+            'generated_at' => gmdate('c'),
+        ],
+    ];
+}
+
 function generate_bracket_structure(int $tournamentId): array
 {
     $tournament = get_tournament($tournamentId);
@@ -379,16 +489,7 @@ function generate_bracket_structure(int $tournamentId): array
 
     if ($tournament['type'] === 'round-robin') {
         $players = tournament_players($tournamentId);
-        $teamNames = array_map(fn($p) => ['name' => $p['username']], $players);
-        $results = [];
-        foreach ($teamNames as $i => $team) {
-            $row = [];
-            foreach ($teamNames as $j => $opponent) {
-                $row[] = $i === $j ? null : [null, null];
-            }
-            $results[] = $row;
-        }
-        return ['teams' => $teamNames, 'results' => $results];
+        return build_round_robin_groups($players);
     }
 
     if ($tournament['type'] === 'single') {
@@ -1281,21 +1382,58 @@ function seed_matches_for_tournament(int $tournamentId): void
     db()->prepare('DELETE FROM tournament_matches WHERE tournament_id = :tid')->execute([':tid' => $tournamentId]);
 
     if ($tournament['type'] === 'round-robin') {
-        $teamIds = array_column($players, 'user_id');
-        foreach ($teamIds as $i => $player1) {
-            for ($j = $i + 1; $j < count($teamIds); $j++) {
-                $player2 = $teamIds[$j];
-                $stmt = db()->prepare('INSERT INTO tournament_matches (tournament_id, stage, round, match_index, player1_user_id, player2_user_id) VALUES (:tid, :stage, :round, :index, :p1, :p2)');
-                $stmt->execute([
-                    ':tid' => $tournamentId,
-                    ':stage' => 'group',
-                    ':round' => $i + 1,
-                    ':index' => $j,
-                    ':p1' => $player1,
-                    ':p2' => $player2,
-                ]);
+        $layout = build_round_robin_groups($players);
+        $teams = $layout['teams'] ?? [];
+        $matches = $layout['matches'] ?? [];
+        $meta = $layout['meta'] ?? [];
+        $playerMap = is_array($meta['player_map'] ?? null) ? $meta['player_map'] : [];
+
+        $indexToPlayer = [];
+        foreach ($teams as $index => $team) {
+            $teamId = $team['id'] ?? null;
+            $playerId = $team['player_id'] ?? null;
+            if ($playerId === null && $teamId !== null && array_key_exists($teamId, $playerMap)) {
+                $playerId = $playerMap[$teamId];
             }
+            $indexToPlayer[$index] = $playerId !== null ? (int)$playerId : null;
         }
+
+        if (empty($matches)) {
+            return;
+        }
+
+        $insert = db()->prepare('INSERT INTO tournament_matches (tournament_id, stage, round, match_index, player1_user_id, player2_user_id) VALUES (:tid, :stage, :round, :index, :p1, :p2)');
+        $roundCounters = [];
+
+        foreach ($matches as $match) {
+            $round = isset($match['round']) ? (int)$match['round'] : 0;
+            if ($round <= 0) {
+                $round = 1;
+            }
+
+            $homeIndex = isset($match['a']['team']) ? (int)$match['a']['team'] : null;
+            $awayIndex = isset($match['b']['team']) ? (int)$match['b']['team'] : null;
+            if ($homeIndex === null || $awayIndex === null) {
+                continue;
+            }
+
+            $player1 = $indexToPlayer[$homeIndex] ?? null;
+            $player2 = $indexToPlayer[$awayIndex] ?? null;
+            if ($player1 === null || $player2 === null) {
+                continue;
+            }
+
+            $roundCounters[$round] = ($roundCounters[$round] ?? 0) + 1;
+            $insert->execute([
+                ':tid' => $tournamentId,
+                ':stage' => 'group',
+                ':round' => $round,
+                ':index' => $roundCounters[$round],
+                ':p1' => $player1,
+                ':p2' => $player2,
+            ]);
+        }
+
         return;
     }
 
