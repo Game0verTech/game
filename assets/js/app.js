@@ -341,7 +341,8 @@ $(function () {
             }
         }
 
-        var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
+        var playerName =
+            $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label-text').text()) || 'this player';
 
         if (roundIndex !== null && !team.attr('data-round-index')) {
             team.attr('data-round-index', roundIndex);
@@ -611,7 +612,7 @@ $(function () {
         container.css('--bracket-team-label-width', '');
         container.addClass('is-measuring-labels');
 
-        var labels = container.find('.bracket-match .team .label');
+        var labels = container.find('.bracket-match .team .label-text');
         if (!labels.length) {
             container.removeClass('is-measuring-labels');
             return;
@@ -626,7 +627,7 @@ $(function () {
         });
 
         if (maxWidth > 0) {
-            container.css('--bracket-team-label-width', Math.ceil(maxWidth + 6) + 'px');
+            container.css('--bracket-team-label-width', Math.ceil(maxWidth + 4) + 'px');
             container.addClass('has-uniform-labels');
         }
 
@@ -781,7 +782,9 @@ $(function () {
     function buildTeamElement(options) {
         var team = $('<div class="team"></div>');
         team.attr('data-slot', options.slotIndex + 1);
-        var label = $('<span class="label"></span>').text(options.name || 'TBD');
+        var label = $('<span class="label"></span>');
+        var labelText = $('<span class="label-text"></span>').text(options.name || 'TBD');
+        label.append(labelText);
         var score = $('<span class="score"></span>');
         var rawScore = options.score;
         var normalizedScore = rawScore;
@@ -835,12 +838,15 @@ $(function () {
         }
 
         var statusLabel = options.statusLabel;
+        if (typeof statusLabel === 'string') {
+            statusLabel = statusLabel.trim();
+        }
+        var statusBadge = null;
         if (statusLabel) {
             team.attr('data-status-label', statusLabel);
-            label.attr('data-status-label', statusLabel);
+            statusBadge = $('<span class="status-badge"></span>').text(statusLabel);
         } else {
             team.removeAttr('data-status-label');
-            label.removeAttr('data-status-label');
         }
 
         team.removeClass('status-win status-loss status-ready status-tbd is-champion');
@@ -865,9 +871,13 @@ $(function () {
             team.addClass('is-champion');
             team.attr('data-champion', '1');
             var crown = $('<span class="champion-icon" role="img" aria-label="Champion" title="Champion"></span>').text('👑');
-            label.append(' ').append(crown);
+            label.append(crown);
         } else {
             team.removeAttr('data-champion');
+        }
+
+        if (statusBadge) {
+            label.append(statusBadge);
         }
 
         return team;
