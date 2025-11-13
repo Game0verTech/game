@@ -10,6 +10,7 @@ function db(): PDO
     }
 
     $config = load_config();
+    $timezone = configured_timezone($config);
     if (empty($config['db'])) {
         throw new RuntimeException('Database configuration missing.');
     }
@@ -26,14 +27,18 @@ function db(): PDO
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
 
-    // Ensure MySQL uses UTC for time-based comparisons so that timestamps generated in PHP match
-    // the values checked with NOW() and related functions. Without this, differences between the
-    // PHP timezone (set to UTC in bootstrap.php) and the MySQL session timezone could cause newly
-    // generated verification tokens to appear expired immediately.
+    // Ensure MySQL uses the same timezone as PHP so time-based comparisons remain consistent.
+    // Using the named timezone allows MySQL to account for daylight saving time automatically.
     try {
-        $pdo->exec("SET time_zone = '+00:00'");
+        $pdo->exec('SET time_zone = ' . $pdo->quote($timezone));
     } catch (PDOException $e) {
-        error_log('Failed to set database time zone: ' . $e->getMessage());
+        error_log('Failed to set database time zone using identifier: ' . $e->getMessage());
+        try {
+            $offset = (new DateTimeImmutable('now', new DateTimeZone($timezone)))->format('P');
+            $pdo->exec('SET time_zone = ' . $pdo->quote($offset));
+        } catch (Throwable $fallbackException) {
+            error_log('Failed to set database time zone offset: ' . $fallbackException->getMessage());
+        }
     }
 
     return $pdo;
