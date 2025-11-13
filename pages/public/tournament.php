@@ -62,9 +62,16 @@ if (!$groupData && $tournament['type'] === 'round-robin' && $tournament['status'
 </div>
 <?php if ($tournament['type'] === 'round-robin'): ?>
     <div class="card">
-        <h3>Groups</h3>
+        <h3>Round Robin</h3>
         <?php if ($groupData): ?>
-            <div class="group-container" data-group='<?= sanitize($groupData) ?>' data-mode="user"></div>
+            <div
+                class="group-container"
+                data-group='<?= sanitize($groupData) ?>'
+                data-mode="user"
+                data-tournament-id="<?= (int)$tournament['id'] ?>"
+                data-status="<?= sanitize($tournament['status']) ?>"
+                <?= in_array($tournament['status'], ['open', 'live'], true) ? 'data-live="1"' : '' ?>
+            ></div>
         <?php else: ?>
             <p class="muted">Groups will appear once the tournament is live.</p>
         <?php endif; ?>
