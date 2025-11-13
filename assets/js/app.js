@@ -51,27 +51,6 @@ $(function () {
         return isFinite(number) ? number : null;
     }
 
-    function buildGroupTeamMetadata(teams) {
-        var metadata = {};
-        if (!Array.isArray(teams)) {
-            return metadata;
-        }
-        teams.forEach(function (team) {
-            if (!team || typeof team !== 'object') {
-                return;
-            }
-            var id = toInteger(team.id, null);
-            if (id === null) {
-                return;
-            }
-            metadata[id] = {
-                player_id: toInteger(team.player_id, null),
-                is_bye: !!team.is_bye
-            };
-        });
-        return metadata;
-    }
-
     function convertLegacyMatrix(results) {
         if (!Array.isArray(results)) {
             return [];
@@ -131,7 +110,9 @@ $(function () {
         var half = total / 2;
         var matches = [];
         var matchId = 1;
+        var roundCounters = {};
         for (var round = 0; round < rounds; round++) {
+            var roundNumber = round + 1;
             for (var pairIndex = 0; pairIndex < half; pairIndex++) {
                 var homeIndex = arrangement[pairIndex];
                 var awayIndex = arrangement[total - 1 - pairIndex];
@@ -140,11 +121,19 @@ $(function () {
                 if ((homeTeam && homeTeam.is_bye) || (awayTeam && awayTeam.is_bye)) {
                     continue;
                 }
+                roundCounters[roundNumber] = (roundCounters[roundNumber] || 0) + 1;
+                var matchNumber = roundCounters[roundNumber];
                 matches.push({
                     id: matchId++,
-                    round: round + 1,
-                    a: { team: homeIndex, score: null },
-                    b: { team: awayIndex, score: null }
+                    round: roundNumber,
+                    match_number: matchNumber,
+                    a: { team: homeIndex },
+                    b: { team: awayIndex },
+                    meta: {
+                        stage: 'group',
+                        round_number: roundNumber,
+                        match_number: matchNumber,
+                    }
                 });
             }
             var fixed = arrangement[0];
@@ -157,51 +146,180 @@ $(function () {
         return matches;
     }
 
-    function normalizeGroupData(raw) {
-        if (!raw) {
+    function normalizeGroupPlayerMeta(player, teamIndex, teams) {
+        var index = typeof teamIndex === 'number' ? teamIndex : null;
+        var team = index !== null && teams[index] ? teams[index] : null;
+        if (team && team.is_bye) {
             return null;
         }
-        var base = raw.init && typeof raw.init === 'object' ? raw.init : raw;
-        var meta = {};
-        if (raw.meta && typeof raw.meta === 'object') {
-            meta = $.extend(true, {}, raw.meta);
-        } else if (base.meta && typeof base.meta === 'object') {
-            meta = $.extend(true, {}, base.meta);
+
+        var normalized = {};
+        if (index !== null) {
+            normalized.team_index = index;
         }
 
-        var rawTeams = Array.isArray(base.teams) ? base.teams : [];
+        if (player && typeof player === 'object') {
+            var playerId = toInteger(player.id, null);
+            if (playerId !== null) {
+                normalized.id = playerId;
+            }
+            if (typeof player.name === 'string' && player.name.trim() !== '') {
+                normalized.name = player.name;
+            }
+        }
+
+        if (normalized.id === undefined && team && team.player_id !== undefined && team.player_id !== null) {
+            var teamPlayer = toInteger(team.player_id, null);
+            if (teamPlayer !== null) {
+                normalized.id = teamPlayer;
+            }
+        }
+
+        if (!normalized.name && team && typeof team.name === 'string' && team.name.trim() !== '') {
+            normalized.name = team.name;
+        }
+
+        if (normalized.id === undefined && normalized.name === undefined) {
+            return null;
+        }
+
+        if (!normalized.name) {
+            normalized.name = normalized.id ? 'Player #' + normalized.id : 'TBD';
+        }
+
+        return normalized;
+    }
+
+    function decorateGroupMatches(matches, teams) {
+        if (!Array.isArray(matches)) {
+            return [];
+        }
+        var roundCounters = {};
+        matches.forEach(function (match) {
+            if (!match || typeof match !== 'object') {
+                return;
+            }
+            var roundNumber = Math.max(1, toInteger(match.round, 1));
+            var homeIndex = toInteger(match.a && match.a.team, null);
+            var awayIndex = toInteger(match.b && match.b.team, null);
+            var homeScore = toScore(match.a && match.a.score);
+            var awayScore = toScore(match.b && match.b.score);
+
+            roundCounters[roundNumber] = (roundCounters[roundNumber] || 0) + 1;
+            if (!match.match_number) {
+                match.match_number = roundCounters[roundNumber];
+            }
+
+            var meta = match.meta && typeof match.meta === 'object' ? $.extend(true, {}, match.meta) : {};
+            meta.stage = 'group';
+            meta.match_id = toInteger(meta.match_id, null);
+            meta.match_number = toInteger(meta.match_number, match.match_number);
+            if (!meta.match_number) {
+                meta.match_number = roundCounters[roundNumber];
+            }
+            meta.round_number = Math.max(1, toInteger(meta.round_number, roundNumber));
+
+            match.round = roundNumber;
+            match.match_number = meta.match_number;
+            match.a = { team: homeIndex };
+            match.b = { team: awayIndex };
+
+            meta.player1 = normalizeGroupPlayerMeta(meta.player1, homeIndex, teams);
+            meta.player2 = normalizeGroupPlayerMeta(meta.player2, awayIndex, teams);
+
+            var winnerMeta = meta.winner && typeof meta.winner === 'object' ? $.extend(true, {}, meta.winner) : null;
+            if (winnerMeta && winnerMeta.id !== undefined) {
+                winnerMeta.id = toInteger(winnerMeta.id, null);
+                winnerMeta.slot = winnerMeta.slot === 2 ? 2 : 1;
+                if (!winnerMeta.name) {
+                    var slotPlayer = winnerMeta.slot === 1 ? meta.player1 : meta.player2;
+                    winnerMeta.name = slotPlayer ? slotPlayer.name : '';
+                }
+                if (winnerMeta.team_index === undefined || winnerMeta.team_index === null) {
+                    winnerMeta.team_index = winnerMeta.slot === 2 ? awayIndex : homeIndex;
+                }
+                if (!winnerMeta.id) {
+                    winnerMeta = null;
+                }
+            }
+
+            if (!winnerMeta && homeScore !== null && awayScore !== null && homeScore !== awayScore) {
+                var slot = homeScore > awayScore ? 1 : 2;
+                var slotPlayerMeta = slot === 1 ? meta.player1 : meta.player2;
+                if (slotPlayerMeta && slotPlayerMeta.id) {
+                    winnerMeta = {
+                        id: slotPlayerMeta.id,
+                        slot: slot,
+                        name: slotPlayerMeta.name || '',
+                        team_index: slot === 1 ? homeIndex : awayIndex,
+                    };
+                }
+            }
+
+            meta.winner = winnerMeta || null;
+            match.meta = meta;
+        });
+
+        matches.sort(function (left, right) {
+            var roundDiff = (left && left.round ? left.round : 0) - (right && right.round ? right.round : 0);
+            if (roundDiff !== 0) {
+                return roundDiff;
+            }
+            var leftNumber = toInteger(left && left.match_number, 0);
+            var rightNumber = toInteger(right && right.match_number, 0);
+            if (leftNumber !== rightNumber) {
+                return leftNumber - rightNumber;
+            }
+            return toInteger(left && left.id, 0) - toInteger(right && right.id, 0);
+        });
+
+        return matches;
+    }
+
+    function normalizeGroupData(raw) {
+        if (!raw || typeof raw !== 'object') {
+            return null;
+        }
+
+        var base = $.extend(true, {}, raw);
         var teams = [];
-        var maxId = 0;
-        for (var i = 0; i < rawTeams.length; i++) {
-            var original = rawTeams[i] || {};
-            var id = toInteger(original.id, i + 1);
-            if (id > maxId) {
-                maxId = id;
-            }
-            var name = typeof original.name === 'string' && original.name.trim() !== '' ? original.name : 'Team ' + id;
-            var playerId = toInteger(original.player_id, null);
-            var isBye = !!original.is_bye;
-            if (!isBye && meta.bye_team_id && id === meta.bye_team_id) {
-                isBye = true;
-            } else if (!isBye && typeof name === 'string' && name.trim().toUpperCase() === 'BYE') {
-                isBye = true;
-            }
-            teams.push({
-                id: id,
-                name: name,
-                player_id: playerId,
-                is_bye: isBye
+        var meta = base.meta && typeof base.meta === 'object' ? $.extend(true, {}, base.meta) : {};
+        var seenIds = {};
+
+        if (Array.isArray(base.teams)) {
+            base.teams.forEach(function (team, index) {
+                if (!team || typeof team !== 'object') {
+                    return;
+                }
+                var id = toInteger(team.id, index + 1);
+                if (id === null || seenIds[id]) {
+                    id = teams.length + 1;
+                }
+                seenIds[id] = true;
+                var name = typeof team.name === 'string' && team.name.trim() !== '' ? team.name : 'Team ' + id;
+                var playerId = toInteger(team.player_id, null);
+                var isBye = !!team.is_bye || name.trim().toUpperCase() === 'BYE';
+                teams.push({
+                    id: id,
+                    name: name,
+                    player_id: playerId,
+                    is_bye: isBye,
+                });
             });
         }
+
+        var maxId = teams.reduce(function (max, team) {
+            return team.id > max ? team.id : max;
+        }, 0);
 
         if (teams.length > 0 && teams.length % 2 === 1) {
             var byeId = maxId + 1;
             teams.push({ id: byeId, name: 'BYE', is_bye: true });
             meta.bye_team_id = byeId;
         } else if (!meta.bye_team_id) {
-            for (var t = 0; t < teams.length; t++) {
-                if (teams[t].is_bye) {
-                    meta.bye_team_id = teams[t].id;
+            for (var i = 0; i < teams.length; i++) {
+                if (teams[i].is_bye) {
+                    meta.bye_team_id = teams[i].id;
                     break;
                 }
             }
@@ -212,71 +330,47 @@ $(function () {
 
         var matches = [];
         if (Array.isArray(base.matches) && base.matches.length) {
-            for (var m = 0; m < base.matches.length; m++) {
-                var match = base.matches[m];
+            base.matches.forEach(function (match) {
                 if (!match || typeof match !== 'object') {
-                    continue;
+                    return;
                 }
                 var homeIndex = toInteger(match.a && match.a.team, null);
                 var awayIndex = toInteger(match.b && match.b.team, null);
                 if (homeIndex === null || awayIndex === null) {
-                    continue;
+                    return;
                 }
                 matches.push({
                     id: toInteger(match.id, matches.length + 1),
-                    round: Math.max(0, toInteger(match.round, 0)),
-                    a: {
-                        team: homeIndex,
-                        score: toScore(match.a && match.a.score)
-                    },
-                    b: {
-                        team: awayIndex,
-                        score: toScore(match.b && match.b.score)
-                    }
+                    round: Math.max(1, toInteger(match.round, 1)),
+                    match_number: toInteger(match.match_number, null),
+                    a: match.a || { team: homeIndex },
+                    b: match.b || { team: awayIndex },
+                    meta: match.meta || {},
                 });
-            }
+            });
         } else if (Array.isArray(base.results) && base.results.length) {
             matches = convertLegacyMatrix(base.results);
         }
 
         if (!matches.length) {
             matches = buildRoundRobinMatches(teams);
-        } else {
-            matches.sort(function (left, right) {
-                if (left.round === right.round) {
-                    return left.id - right.id;
-                }
-                return left.round - right.round;
-            });
         }
+
+        matches = decorateGroupMatches(matches, teams);
 
         meta.rounds = matches.reduce(function (max, match) {
             return Math.max(max, match.round || 0);
         }, teams.length > 1 ? teams.length - 1 : 0);
 
+        if (!meta.generated_at) {
+            meta.generated_at = new Date().toISOString();
+        }
+
         return {
             teams: teams,
             matches: matches,
-            meta: meta
+            meta: meta,
         };
-    }
-
-    function cloneRoundRobinTeams(teams) {
-        if (!Array.isArray(teams)) {
-            return [];
-        }
-        return teams.map(function (team) {
-            return team ? $.extend(true, {}, team) : null;
-        });
-    }
-
-    function cloneRoundRobinMatches(matches) {
-        if (!Array.isArray(matches)) {
-            return [];
-        }
-        return matches.map(function (match) {
-            return match ? $.extend(true, {}, match) : null;
-        });
     }
 
     function groupRoundRobinMatches(matches) {
@@ -302,493 +396,118 @@ $(function () {
             .map(function (round) {
                 return {
                     round: round,
-                    matches: grouped[round]
+                    matches: grouped[round],
                 };
             });
     }
-
-    function formatRoundRobinScore(score) {
-        if (score === null || score === undefined || score === '') {
-            return '—';
-        }
-        var numeric = typeof score === 'number' ? score : parseFloat(score);
-        if (!Number.isFinite(numeric)) {
-            return '—';
-        }
-        return numeric % 1 === 0 ? String(numeric) : numeric.toFixed(2);
-    }
-
-    function registerTeamNameRef(refs, index, element) {
-        if (typeof index !== 'number' || !element || !element.length) {
-            return;
-        }
-        refs[index] = refs[index] || [];
-        refs[index].push(element);
-    }
-
-    function refreshRegisteredTeamNames(refs, state, index) {
-        if (!refs || !state || !Array.isArray(state.teams)) {
-            return;
-        }
-        var entries = [];
-        if (typeof index === 'number') {
-            if (refs[index]) {
-                entries.push([index, refs[index]]);
-            }
-        } else {
-            Object.keys(refs).forEach(function (key) {
-                var idx = parseInt(key, 10);
-                if (refs[idx]) {
-                    entries.push([idx, refs[idx]]);
-                }
-            });
-        }
-        entries.forEach(function (entry) {
-            var idx = entry[0];
-            var elements = entry[1] || [];
-            var team = state.teams[idx] || {};
-            var name = team && typeof team.name === 'string' && team.name.trim() !== ''
-                ? team.name
-                : 'Team ' + (idx + 1);
-            elements.forEach(function (el) {
-                if (!el || !el.length) {
-                    return;
-                }
-                if (el.is('input, textarea')) {
-                    el.val(name);
-                } else {
-                    el.text(name);
-                }
-            });
-        });
-    }
-
-    function computeRoundRobinStandings(state) {
-        var teams = Array.isArray(state && state.teams) ? state.teams : [];
-        var matches = Array.isArray(state && state.matches) ? state.matches : [];
-        var summary = {};
-
-        teams.forEach(function (team, index) {
-            if (!team || team.is_bye) {
-                return;
-            }
-            summary[index] = {
-                index: index,
-                id: toInteger(team.id, index + 1),
-                name: typeof team.name === 'string' && team.name.trim() !== '' ? team.name : 'Team ' + (index + 1),
-                played: 0,
-                wins: 0,
-                losses: 0,
-                ties: 0,
-                scored: 0,
-                allowed: 0,
-                points: 0
-            };
-        });
-
-        matches.forEach(function (match) {
-            if (!match || typeof match !== 'object') {
-                return;
-            }
-            var homeIndex = toInteger(match.a && match.a.team, null);
-            var awayIndex = toInteger(match.b && match.b.team, null);
-            if (homeIndex === null || awayIndex === null) {
-                return;
-            }
-            var home = summary[homeIndex];
-            var away = summary[awayIndex];
-            if (!home || !away) {
-                return;
-            }
-            var scoreA = toScore(match.a && match.a.score);
-            var scoreB = toScore(match.b && match.b.score);
-            if (scoreA === null || scoreB === null) {
-                return;
-            }
-            home.played++;
-            away.played++;
-            home.scored += scoreA;
-            home.allowed += scoreB;
-            away.scored += scoreB;
-            away.allowed += scoreA;
-            if (scoreA > scoreB) {
-                home.wins++;
-                away.losses++;
-                home.points += 3;
-            } else if (scoreB > scoreA) {
-                away.wins++;
-                home.losses++;
-                away.points += 3;
-            } else {
-                home.ties++;
-                away.ties++;
-                home.points += 1;
-                away.points += 1;
-            }
-        });
-
-        return Object.keys(summary)
-            .map(function (key) {
-                return summary[key];
-            })
-            .sort(function (left, right) {
-                if (right.points !== left.points) {
-                    return right.points - left.points;
-                }
-                if (right.wins !== left.wins) {
-                    return right.wins - left.wins;
-                }
-                var diffLeft = left.scored - left.allowed;
-                var diffRight = right.scored - right.allowed;
-                if (diffRight !== diffLeft) {
-                    return diffRight - diffLeft;
-                }
-                if (right.scored !== left.scored) {
-                    return right.scored - left.scored;
-                }
-                return left.name.localeCompare(right.name);
-            });
-    }
-
-    function renderRoundRobinStandings(section, state) {
-        if (!section || !section.length) {
-            return;
-        }
-        section.empty();
-        section.append($('<h4 class="round-robin__title"></h4>').text('Standings'));
-        var standings = computeRoundRobinStandings(state);
-        if (!standings.length) {
-            section.append($('<p class="muted small"></p>').text('Standings will appear once match results are recorded.'));
-            return;
-        }
-        var table = $('<table class="round-robin__standings"></table>');
-        var thead = $('<thead><tr>' +
-            '<th>#</th>' +
-            '<th>Team</th>' +
-            '<th>P</th>' +
-            '<th>W</th>' +
-            '<th>L</th>' +
-            '<th>T</th>' +
-            '<th>GF</th>' +
-            '<th>GA</th>' +
-            '<th>GD</th>' +
-            '<th>Pts</th>' +
-            '</tr></thead>');
-        var tbody = $('<tbody></tbody>');
-        standings.forEach(function (entry, index) {
-            var diff = entry.scored - entry.allowed;
-            var row = $('<tr></tr>');
-            row.append($('<td></td>').text(index + 1));
-            row.append($('<td class="round-robin__standings-team"></td>').text(entry.name));
-            row.append($('<td></td>').text(entry.played));
-            row.append($('<td></td>').text(entry.wins));
-            row.append($('<td></td>').text(entry.losses));
-            row.append($('<td></td>').text(entry.ties));
-            row.append($('<td></td>').text(entry.scored));
-            row.append($('<td></td>').text(entry.allowed));
-            row.append($('<td></td>').text(diff));
-            row.append($('<td></td>').text(entry.points));
-            tbody.append(row);
-        });
-        table.append(thead, tbody);
-        section.append(table);
-    }
-
-    function renderRoundRobinTeams(section, state, mode, persist, refs, onTeamUpdated) {
-        if (!section || !section.length) {
-            return;
-        }
-        section.empty();
-        section.append($('<h4 class="round-robin__title"></h4>').text('Teams'));
-        var list = $('<ul class="round-robin__team-list"></ul>');
-        section.append(list);
-        var teams = Array.isArray(state && state.teams) ? state.teams : [];
-        teams.forEach(function (team, index) {
-            if (!team) {
-                return;
-            }
-            var item = $('<li class="round-robin__team-item"></li>');
-            var indexLabel = $('<span class="round-robin__team-index"></span>').text('#' + (index + 1));
-            item.append(indexLabel);
-            if (team.is_bye) {
-                var byeLabel = $('<span class="round-robin__team-name is-bye"></span>').text('BYE');
-                item.append(byeLabel);
-                registerTeamNameRef(refs, index, byeLabel);
-            } else if (mode === 'admin') {
-                var input = $('<input type="text" class="round-robin__team-input">').val(team.name || '');
-                input.attr('aria-label', 'Team ' + (index + 1) + ' name');
-                item.append(input);
-                registerTeamNameRef(refs, index, input);
-                input.on('input', function () {
-                    state.teams[index].name = input.val();
-                    refreshRegisteredTeamNames(refs, state, index);
-                });
-                var commit = function () {
-                    state.teams[index].name = input.val();
-                    var payload = persist ? persist() : null;
-                    if (payload) {
-                        refreshRegisteredTeamNames(refs, state, index);
-                    }
-                    input.val(state.teams[index].name || '');
-                    if (typeof onTeamUpdated === 'function') {
-                        onTeamUpdated(index);
-                    }
-                };
-                input.on('change', commit);
-                input.on('blur', commit);
-            } else {
-                var name = typeof team.name === 'string' && team.name.trim() !== '' ? team.name : 'Team ' + (index + 1);
-                var label = $('<span class="round-robin__team-name"></span>').text(name);
-                item.append(label);
-                registerTeamNameRef(refs, index, label);
-            }
-            list.append(item);
-        });
-        refreshRegisteredTeamNames(refs, state);
-    }
-
-    function renderRoundRobinSchedule(section, state, mode, persist, refs, onScoresChanged) {
-        if (!section || !section.length) {
-            return;
-        }
-        section.empty();
-        section.append($('<h4 class="round-robin__title"></h4>').text('Schedule'));
-        var matches = Array.isArray(state && state.matches) ? state.matches : [];
-        if (!matches.length) {
-            section.append($('<p class="muted small"></p>').text('Matches will appear once enough players join the tournament.'));
-            return;
-        }
-        var grouped = groupRoundRobinMatches(matches);
-        var roundsContainer = $('<div class="round-robin__rounds"></div>');
-        section.append(roundsContainer);
-        grouped.forEach(function (entry) {
-            var roundBlock = $('<div class="round-robin__round"></div>');
-            roundBlock.append($('<h5 class="round-robin__round-title"></h5>').text('Round ' + entry.round));
-            var matchList = $('<div class="round-robin__match-list"></div>');
-            entry.matches.forEach(function (match) {
-                if (!match) {
-                    return;
-                }
-                var homeIndex = toInteger(match.a && match.a.team, null);
-                var awayIndex = toInteger(match.b && match.b.team, null);
-                if (homeIndex === null || awayIndex === null) {
-                    return;
-                }
-                var matchRow = $('<div class="round-robin__match"></div>');
-                var homeTeam = $('<div class="round-robin__team round-robin__team--home"></div>');
-                var awayTeam = $('<div class="round-robin__team round-robin__team--away"></div>');
-                var homeName = $('<span class="round-robin__team-name"></span>');
-                var awayName = $('<span class="round-robin__team-name"></span>');
-                homeTeam.append(homeName);
-                awayTeam.append(awayName);
-                registerTeamNameRef(refs, homeIndex, homeName);
-                registerTeamNameRef(refs, awayIndex, awayName);
-                var homeScoreWrapper = $('<div class="round-robin__score"></div>');
-                var awayScoreWrapper = $('<div class="round-robin__score"></div>');
-                var updateVisualization;
-                if (mode === 'admin') {
-                    var homeInput = $('<input type="number" min="0" step="1" class="round-robin__score-input">');
-                    var awayInput = $('<input type="number" min="0" step="1" class="round-robin__score-input">');
-                    if (match.a && match.a.score !== null && match.a.score !== undefined) {
-                        homeInput.val(match.a.score);
-                    }
-                    if (match.b && match.b.score !== null && match.b.score !== undefined) {
-                        awayInput.val(match.b.score);
-                    }
-                    homeScoreWrapper.append(homeInput);
-                    awayScoreWrapper.append(awayInput);
-                    updateVisualization = function () {
-                        var scoreA = toScore(match.a && match.a.score);
-                        var scoreB = toScore(match.b && match.b.score);
-                        var hasScores = scoreA !== null && scoreB !== null;
-                        matchRow.toggleClass('is-complete', hasScores);
-                        homeTeam.toggleClass('is-winner', hasScores && scoreA > scoreB);
-                        awayTeam.toggleClass('is-winner', hasScores && scoreB > scoreA);
-                        var isTie = hasScores && scoreA === scoreB;
-                        homeTeam.toggleClass('is-tied', isTie);
-                        awayTeam.toggleClass('is-tied', isTie);
-                    };
-                    var commitScore = function (input, slot) {
-                        return function () {
-                            if (!state.matches) {
-                                return;
-                            }
-                            var parsed = toScore(input.val());
-                            if (slot === 'home') {
-                                match.a.score = parsed;
-                            } else {
-                                match.b.score = parsed;
-                            }
-                            var payload = persist ? persist() : null;
-                            if (slot === 'home') {
-                                var normalized = match.a && match.a.score;
-                                input.val(normalized === null || normalized === undefined ? '' : normalized);
-                            } else {
-                                var normalizedAway = match.b && match.b.score;
-                                input.val(normalizedAway === null || normalizedAway === undefined ? '' : normalizedAway);
-                            }
-                            updateVisualization();
-                            if (typeof onScoresChanged === 'function') {
-                                onScoresChanged();
-                            }
-                        };
-                    };
-                    var commitHome = commitScore(homeInput, 'home');
-                    var commitAway = commitScore(awayInput, 'away');
-                    homeInput.on('change', commitHome);
-                    homeInput.on('blur', commitHome);
-                    awayInput.on('change', commitAway);
-                    awayInput.on('blur', commitAway);
-                } else {
-                    var homeScoreDisplay = $('<span class="round-robin__score-value"></span>').text(formatRoundRobinScore(match.a && match.a.score));
-                    var awayScoreDisplay = $('<span class="round-robin__score-value"></span>').text(formatRoundRobinScore(match.b && match.b.score));
-                    homeScoreWrapper.append(homeScoreDisplay);
-                    awayScoreWrapper.append(awayScoreDisplay);
-                    updateVisualization = function () {
-                        var scoreA = toScore(match.a && match.a.score);
-                        var scoreB = toScore(match.b && match.b.score);
-                        var hasScores = scoreA !== null && scoreB !== null;
-                        matchRow.toggleClass('is-complete', hasScores);
-                        homeTeam.toggleClass('is-winner', hasScores && scoreA > scoreB);
-                        awayTeam.toggleClass('is-winner', hasScores && scoreB > scoreA);
-                        var isTie = hasScores && scoreA === scoreB;
-                        homeTeam.toggleClass('is-tied', isTie);
-                        awayTeam.toggleClass('is-tied', isTie);
-                        homeScoreDisplay.text(formatRoundRobinScore(match.a && match.a.score));
-                        awayScoreDisplay.text(formatRoundRobinScore(match.b && match.b.score));
-                    };
-                }
-                homeTeam.append(homeScoreWrapper);
-                awayTeam.append(awayScoreWrapper);
-                matchRow.append(homeTeam);
-                matchRow.append($('<span class="round-robin__vs"></span>').text('vs'));
-                matchRow.append(awayTeam);
-                matchList.append(matchRow);
-                updateVisualization();
-            });
-            if (matchList.children().length) {
-                roundBlock.append(matchList);
-                roundsContainer.append(roundBlock);
-            }
-        });
-        refreshRegisteredTeamNames(refs, state);
-    }
-
-    function renderRoundRobinLayout(container, state, mode, persist) {
+    function renderRoundRobinLayout(container, state, mode) {
         if (!container || !container.length) {
             return;
         }
-        container.empty();
-        container.addClass('round-robin-container');
+
+        var effectiveMode = normalizeMode(mode);
+        container.data('mode', effectiveMode);
+        container.attr('data-mode', effectiveMode);
+        container.attr('data-format', 'round-robin');
+        container.removeClass('round-robin-container');
+        container.addClass('group-container');
+        container.addClass('bracket-container');
+
         var teams = Array.isArray(state && state.teams) ? state.teams : [];
-        if (!teams.length) {
-            container.append($('<p class="muted"></p>').text('No teams have been added yet. Add players to generate the schedule.'));
+        var matches = Array.isArray(state && state.matches) ? state.matches : [];
+
+        if (!matches.length) {
+            container.empty().append(
+                $('<p class="bracket-placeholder"></p>').text('Round robin schedule will appear once matches are seeded.')
+            );
+            container.data('groupData', state);
+            container.data('groupState', JSON.stringify(state || {}));
             return;
         }
-        var wrapper = $('<div class="round-robin"></div>');
-        var layout = $('<div class="round-robin__layout"></div>');
-        var teamsSection = $('<section class="round-robin__section round-robin__section--teams"></section>');
-        var scheduleSection = $('<section class="round-robin__section round-robin__section--schedule"></section>');
-        var standingsSection = $('<section class="round-robin__section round-robin__section--standings"></section>');
-        layout.append(teamsSection, scheduleSection, standingsSection);
-        wrapper.append(layout);
-        container.append(wrapper);
-        var refs = {};
-        var refreshStandings = function () {
-            renderRoundRobinStandings(standingsSection, state);
-        };
-        renderRoundRobinTeams(teamsSection, state, mode, persist, refs, function (index) {
-            refreshRegisteredTeamNames(refs, state, index);
-            refreshStandings();
-        });
-        renderRoundRobinSchedule(scheduleSection, state, mode, persist, refs, refreshStandings);
-        refreshStandings();
-    }
 
-    function buildGroupSavePayload(updated, metaState, teamMetadata) {
-        var teams = [];
-        var metadata = teamMetadata || {};
-        if (updated && Array.isArray(updated.teams)) {
-            updated.teams.forEach(function (team, index) {
-                if (!team || typeof team !== 'object') {
-                    return;
+        var view = $('<div class="bracket-view"></div>');
+        var columns = $('<div class="bracket-columns"></div>');
+        var svg = $('<svg class="bracket-lines" aria-hidden="true" focusable="false"></svg>');
+        view.append(columns);
+        view.append(svg);
+        container.empty().append(view);
+
+        var rounds = groupRoundRobinMatches(matches);
+        rounds.forEach(function (roundEntry, roundIndex) {
+            var roundNumber = roundEntry.round;
+            var roundEl = $('<div class="bracket-round"></div>')
+                .attr('data-stage', 'group')
+                .attr('data-round-index', roundIndex)
+                .attr('data-round', roundNumber);
+            var title = $('<div class="bracket-round__title"></div>').text('Round ' + roundNumber);
+            var matchesContainer = $('<div class="bracket-round__matches"></div>');
+            roundEl.append(title, matchesContainer);
+
+            roundEntry.matches.forEach(function (match, matchIndex) {
+                var meta = match.meta && typeof match.meta === 'object' ? match.meta : {};
+                var matchId = toInteger(meta.match_id, null);
+                var matchNumber = toInteger(match.match_number, matchIndex + 1);
+                var matchEl = $('<div class="bracket-match"></div>')
+                    .attr('data-stage', 'group')
+                    .attr('data-round', roundNumber)
+                    .attr('data-round-index', roundIndex)
+                    .attr('data-match-index', matchIndex)
+                    .attr('data-match-number', matchNumber);
+                if (matchId) {
+                    matchEl.attr('data-match-id', matchId);
                 }
-                var id = toInteger(team.id, index + 1);
-                if (id === null) {
-                    return;
-                }
-                var entry = {
-                    id: id,
-                    name: typeof team.name === 'string' ? team.name : 'Team ' + id
+
+                var statusMeta = {
+                    player1: meta.player1 || null,
+                    player2: meta.player2 || null,
+                    winner: meta.winner || null,
                 };
-                if (metadata[id] && metadata[id].player_id !== null) {
-                    entry.player_id = metadata[id].player_id;
-                }
-                if ((metadata[id] && metadata[id].is_bye) || (entry.name && entry.name.trim().toUpperCase() === 'BYE')) {
-                    entry.is_bye = true;
-                }
-                teams.push(entry);
-            });
-        }
+                var winner = meta.winner && meta.winner.id ? meta.winner : null;
+                var info = {
+                    score1: winner ? (winner.slot === 1 ? 1 : 0) : null,
+                    score2: winner ? (winner.slot === 2 ? 1 : 0) : null,
+                };
 
-        var matches = [];
-        if (updated && Array.isArray(updated.matches)) {
-            updated.matches.forEach(function (match) {
-                if (!match || typeof match !== 'object') {
-                    return;
-                }
-                var homeIndex = toInteger(match.a && match.a.team, null);
-                var awayIndex = toInteger(match.b && match.b.team, null);
-                if (homeIndex === null || awayIndex === null) {
-                    return;
-                }
-                matches.push({
-                    id: toInteger(match.id, matches.length + 1),
-                    round: Math.max(0, toInteger(match.round, 0)),
-                    a: {
-                        team: homeIndex,
-                        score: toScore(match.a && match.a.score)
-                    },
-                    b: {
-                        team: awayIndex,
-                        score: toScore(match.b && match.b.score)
+                [0, 1].forEach(function (slotIndex) {
+                    var slotTeam = slotIndex === 0 ? match.a : match.b;
+                    var teamIndex = toInteger(slotTeam && slotTeam.team, null);
+                    var teamData = teamIndex !== null && teams[teamIndex] ? teams[teamIndex] : {};
+                    var playerMeta = slotIndex === 0 ? statusMeta.player1 : statusMeta.player2;
+                    var name = playerMeta && playerMeta.name ? playerMeta.name : (teamData && teamData.name ? teamData.name : 'Team ' + (teamIndex + 1));
+                    var playerId = playerMeta && playerMeta.id ? toInteger(playerMeta.id, null) : null;
+                    var statusLabel = computeStatusLabel(info, slotIndex, statusMeta);
+                    var isSelectable = effectiveMode === 'admin' && matchId && playerId;
+                    var teamEl = buildTeamElement({
+                        slotIndex: slotIndex,
+                        name: name,
+                        playerId: playerId,
+                        playerName: name,
+                        score: null,
+                        statusLabel: statusLabel,
+                        isSelectable: isSelectable,
+                        matchId: matchId,
+                        roundIndex: roundIndex,
+                        matchIndex: matchIndex,
+                    });
+                    if (teamIndex !== null) {
+                        teamEl.attr('data-team-index', teamIndex);
                     }
+                    matchEl.append(teamEl);
                 });
+
+                matchesContainer.append(matchEl);
             });
-        }
 
-        var meta = $.extend(true, {}, metaState || {});
-        var playerMap = {};
-        teams.forEach(function (team) {
-            if (team.player_id !== undefined && team.player_id !== null) {
-                playerMap[team.id] = team.player_id;
-            }
+            columns.append(roundEl);
         });
-        meta.player_map = playerMap;
-        meta.has_bye = teams.some(function (team) {
-            return !!team.is_bye;
-        });
-        var byeId = null;
-        for (var i = 0; i < teams.length; i++) {
-            if (teams[i].is_bye) {
-                byeId = teams[i].id;
-                break;
-            }
-        }
-        meta.bye_team_id = byeId;
-        meta.rounds = matches.reduce(function (max, match) {
-            return Math.max(max, match.round || 0);
-        }, meta.rounds || 0);
-        meta.format = meta.format || 'round-robin';
-        meta.generated_at = new Date().toISOString();
 
-        return {
-            teams: teams,
-            matches: matches,
-            meta: meta
-        };
+        container.data('groupData', state);
+        container.data('groupState', JSON.stringify(state || {}));
+
+        enableBracketPanning(container);
+        refreshBracketGeometry(container);
+        enableAdminControls(container, effectiveMode);
     }
-
     function clearTeamHighlight(container) {
         if (!container || !container.length) {
             return;
@@ -2470,6 +2189,80 @@ $(function () {
         container.data('poller', poller);
     }
 
+
+    function fetchGroup(container, tournamentId, mode) {
+        $.getJSON('/api/bracket.php', { tournament_id: tournamentId })
+            .done(function (response) {
+                if (response && response.status) {
+                    container.data('status', response.status);
+                    container.attr('data-status', response.status);
+                }
+                var payload = response ? response.group || response.bracket : null;
+                if (!payload) {
+                    return;
+                }
+                var normalized = normalizeGroupData(payload);
+                if (!normalized) {
+                    return;
+                }
+                var serialized = JSON.stringify(normalized || {});
+                if (container.data('groupState') === serialized) {
+                    return;
+                }
+                renderRoundRobinLayout(container, normalized, mode);
+                container.data('groupData', normalized);
+                container.data('groupState', serialized);
+            })
+            .fail(function (xhr) {
+                console.error('Failed to refresh groups', xhr);
+            });
+    }
+
+    function applyGroupPayload(container, payload, mode) {
+        if (!container || !container.length || !payload) {
+            return false;
+        }
+        var effectiveMode = normalizeMode(mode || container.data('mode'));
+        if (payload.status) {
+            container.data('status', payload.status);
+            container.attr('data-status', payload.status);
+        }
+        var data = payload.group || payload.bracket || null;
+        if (!data) {
+            return false;
+        }
+        var normalized = normalizeGroupData(data);
+        if (!normalized) {
+            return false;
+        }
+        renderRoundRobinLayout(container, normalized, effectiveMode);
+        container.data('groupData', normalized);
+        container.data('groupState', JSON.stringify(normalized || {}));
+        return true;
+    }
+
+    function setupGroupPolling(container, tournamentId, mode) {
+        if (!tournamentId) {
+            return;
+        }
+        fetchGroup(container, tournamentId, mode);
+        if (!shouldPoll(container, mode)) {
+            return;
+        }
+        var interval = parseInt(container.data('refreshInterval'), 10);
+        if (!interval || interval < 1500) {
+            interval = 2000;
+        }
+        var existing = container.data('poller');
+        if (existing) {
+            clearInterval(existing);
+        }
+        var poller = window.setInterval(function () {
+            fetchGroup(container, tournamentId, mode);
+        }, interval);
+        container.data('poller', poller);
+    }
+
     function applyBracketPayload(container, payload, mode) {
         if (!container || !container.length || !payload) {
             return false;
@@ -2492,6 +2285,7 @@ $(function () {
             return;
         }
         var mode = normalizeMode(container.data('mode') || 'admin');
+        var isGroup = container.hasClass('group-container');
         container.addClass('is-updating');
         $.ajax({
             method: 'POST',
@@ -2506,8 +2300,13 @@ $(function () {
             },
         })
             .done(function (response) {
-                if (!applyBracketPayload(container, response, mode)) {
-                    fetchBracket(container, tournamentId, mode);
+                var applied = isGroup ? applyGroupPayload(container, response, mode) : applyBracketPayload(container, response, mode);
+                if (!applied) {
+                    if (isGroup) {
+                        fetchGroup(container, tournamentId, mode);
+                    } else {
+                        fetchBracket(container, tournamentId, mode);
+                    }
                 }
                 container.removeClass('has-error');
                 container.removeData('lastError');
@@ -2515,8 +2314,11 @@ $(function () {
             .fail(function (xhr, textStatus) {
                 if (textStatus === 'parsererror') {
                     var parsed = parseJsonString(xhr.responseText);
-                    if (applyBracketPayload(container, parsed, mode)) {
-                        return;
+                    if (parsed) {
+                        var fallbackApplied = isGroup ? applyGroupPayload(container, parsed, mode) : applyBracketPayload(container, parsed, mode);
+                        if (fallbackApplied) {
+                            return;
+                        }
                     }
                 }
                 if (xhr.status && xhr.status < 400) {
@@ -2525,7 +2327,11 @@ $(function () {
                         statusText: xhr.statusText,
                         textStatus: textStatus,
                     });
-                    fetchBracket(container, tournamentId, mode);
+                    if (isGroup) {
+                        fetchGroup(container, tournamentId, mode);
+                    } else {
+                        fetchBracket(container, tournamentId, mode);
+                    }
                     return;
                 }
                 var response = xhr.responseJSON || parseJsonString(xhr.responseText);
@@ -2606,97 +2412,28 @@ $(function () {
         var container = $(this);
         var rawData = parseJsonPayload(container, 'group');
         var mode = normalizeMode(container.data('mode'));
-        var field = container.data('target');
 
         if (!rawData) {
-            container.empty();
-            container.append($('<p class="muted"></p>').text('Round robin groups will appear once players have been added.'));
+            container.empty().append($('<p class="muted"></p>').text('Round robin groups will appear once the tournament is live.'));
+            var tournamentIdMissing = container.data('tournamentId');
+            setupGroupPolling(container, tournamentIdMissing, mode);
             return;
         }
 
         var normalized = normalizeGroupData(rawData);
         if (!normalized) {
-            container.empty();
-            container.append($('<p class="muted"></p>').text('Round robin data could not be loaded.'));
+            container.empty().append($('<p class="muted"></p>').text('Round robin data could not be loaded.'));
+            var tournamentIdInvalid = container.data('tournamentId');
+            setupGroupPolling(container, tournamentIdInvalid, mode);
             return;
         }
 
-        var state = {
-            teams: cloneRoundRobinTeams(normalized.teams),
-            matches: cloneRoundRobinMatches(normalized.matches),
-            meta: $.extend(true, {}, normalized.meta || {})
-        };
+        renderRoundRobinLayout(container, normalized, mode);
+        container.data('groupData', normalized);
+        container.data('groupState', JSON.stringify(normalized || {}));
 
-        var target = field ? $('#' + field) : $();
-        var teamMetadata = buildGroupTeamMetadata(state.teams);
-
-        var persist = function () {
-            if (!target.length || mode !== 'admin') {
-                return null;
-            }
-            var payload = buildGroupSavePayload(state, state.meta, teamMetadata);
-            var teamIndexById = {};
-            state.teams.forEach(function (team, index) {
-                if (!team) {
-                    return;
-                }
-                var id = toInteger(team.id, index + 1);
-                if (id !== null) {
-                    teamIndexById[id] = index;
-                }
-            });
-            if (payload && Array.isArray(payload.teams)) {
-                payload.teams.forEach(function (team) {
-                    var id = toInteger(team && team.id, null);
-                    var idx = typeof id === 'number' ? teamIndexById[id] : undefined;
-                    if (typeof idx === 'number' && state.teams[idx]) {
-                        state.teams[idx].name = team.name;
-                        state.teams[idx].is_bye = !!team.is_bye;
-                    }
-                });
-            }
-            var matchById = {};
-            state.matches.forEach(function (match) {
-                if (!match) {
-                    return;
-                }
-                var matchId = toInteger(match.id, null);
-                if (matchId !== null) {
-                    matchById[matchId] = match;
-                }
-            });
-            if (payload && Array.isArray(payload.matches)) {
-                payload.matches.forEach(function (match) {
-                    if (!match) {
-                        return;
-                    }
-                    var matchId = toInteger(match.id, null);
-                    if (matchId === null || !matchById[matchId]) {
-                        return;
-                    }
-                    matchById[matchId].round = match.round;
-                    matchById[matchId].a.score = match.a && typeof match.a.score !== 'undefined' ? match.a.score : null;
-                    matchById[matchId].b.score = match.b && typeof match.b.score !== 'undefined' ? match.b.score : null;
-                });
-            }
-            state.meta = $.extend(true, {}, payload && payload.meta ? payload.meta : {});
-            teamMetadata = buildGroupTeamMetadata(payload ? payload.teams : state.teams);
-            target.val(JSON.stringify(payload));
-            return payload;
-        };
-
-        if (mode === 'admin' && target.length) {
-            var initial = persist();
-            if (!initial) {
-                var bootstrap = buildGroupSavePayload(state, state.meta, teamMetadata);
-                state.meta = $.extend(true, {}, bootstrap.meta || {});
-                teamMetadata = buildGroupTeamMetadata(bootstrap.teams);
-                target.val(JSON.stringify(bootstrap));
-            }
-        }
-
-        renderRoundRobinLayout(container, state, mode, persist);
-        container.data('roundRobinState', state);
+        var tournamentId = container.data('tournamentId');
+        setupGroupPolling(container, tournamentId, mode);
     });
     $('.js-confirm').on('submit', function (e) {
         var message = $(this).data('confirm') || 'Are you sure?';

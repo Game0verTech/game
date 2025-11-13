@@ -225,7 +225,7 @@ switch ($action) {
             exit;
         }
         try {
-            $bracket = record_match_result($tournamentId, $matchId, $winner);
+            $structure = record_match_result($tournamentId, $matchId, $winner);
         } catch (Throwable $e) {
             error_log('Match update failed: ' . $e->getMessage());
             http_response_code(500);
@@ -237,9 +237,11 @@ switch ($action) {
             exit;
         }
         header('Content-Type: application/json');
+        $key = $tournament['type'] === 'round-robin' ? 'group' : 'bracket';
         echo safe_json_encode([
             'ok' => true,
-            'bracket' => $bracket,
+            $key => $structure,
+            'status' => $tournament['status'],
         ]);
         exit;
 
