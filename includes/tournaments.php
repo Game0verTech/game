@@ -154,6 +154,36 @@ function tournament_bracket_snapshot(array $tournament): ?string
     }
 }
 
+function refresh_tournament_bracket_snapshot(int $tournamentId): void
+{
+    $tournament = get_tournament($tournamentId);
+    if (!$tournament) {
+        return;
+    }
+
+    $structure = generate_bracket_structure($tournamentId);
+    if (empty($structure)) {
+        update_tournament_json($tournamentId, null, null);
+        touch_tournament($tournamentId);
+        return;
+    }
+
+    try {
+        $payload = safe_json_encode($structure);
+    } catch (Throwable $e) {
+        error_log(sprintf('Failed to encode refreshed bracket for tournament %d: %s', $tournamentId, $e->getMessage()));
+        return;
+    }
+
+    if ($tournament['type'] === 'round-robin') {
+        update_tournament_json($tournamentId, null, $payload);
+    } else {
+        update_tournament_json($tournamentId, $payload, null);
+    }
+
+    touch_tournament($tournamentId);
+}
+
 function normalize_tournament_schedule_input(?string $date, ?string $time): ?string
 {
     $date = trim((string)($date ?? ''));
@@ -263,7 +293,7 @@ function update_tournament_details(int $id, string $name, string $type, string $
     $stmt->execute();
 }
 
-function set_tournament_players(int $tournamentId, array $userIds): void
+function set_tournament_players(int $tournamentId, array $userIds): bool
 {
     $normalized = [];
     foreach ($userIds as $userId) {
@@ -279,19 +309,27 @@ function set_tournament_players(int $tournamentId, array $userIds): void
     $toAdd = array_diff($normalized, $existingIds);
     $toRemove = array_diff($existingIds, $normalized);
 
+    $changed = false;
     foreach ($toAdd as $userId) {
-        add_player_to_tournament($tournamentId, $userId);
+        $changed = add_player_to_tournament($tournamentId, $userId) || $changed;
     }
 
     foreach ($toRemove as $userId) {
-        remove_player_from_tournament($tournamentId, $userId);
+        $changed = remove_player_from_tournament($tournamentId, $userId) || $changed;
     }
+
+    if ($changed) {
+        refresh_tournament_bracket_snapshot($tournamentId);
+    }
+
+    return $changed;
 }
 
 function add_player_to_tournament(int $tournamentId, int $userId): bool
 {
     $stmt = db()->prepare('INSERT IGNORE INTO tournament_players (tournament_id, user_id) VALUES (:tid, :uid)');
-    return $stmt->execute([':tid' => $tournamentId, ':uid' => $userId]);
+    $stmt->execute([':tid' => $tournamentId, ':uid' => $userId]);
+    return $stmt->rowCount() > 0;
 }
 
 function is_user_registered(int $tournamentId, int $userId): bool
@@ -301,10 +339,11 @@ function is_user_registered(int $tournamentId, int $userId): bool
     return (bool)$stmt->fetchColumn();
 }
 
-function remove_player_from_tournament(int $tournamentId, int $userId): void
+function remove_player_from_tournament(int $tournamentId, int $userId): bool
 {
     $stmt = db()->prepare('DELETE FROM tournament_players WHERE tournament_id = :tid AND user_id = :uid');
     $stmt->execute([':tid' => $tournamentId, ':uid' => $userId]);
+    return $stmt->rowCount() > 0;
 }
 
 function tournament_players(int $tournamentId): array
@@ -377,6 +416,158 @@ function double_elimination_loser_round_match_count(int $round, int $slotCount):
     $divisor = (int)pow(2, max(1, $exponent));
     $matches = (int)max(1, $slotCount / $divisor);
     return $matches;
+}
+
+function prune_unreachable_loser_matches(array &$layout): void
+{
+    if (empty($layout['losers']) || !is_array($layout['losers'])) {
+        return;
+    }
+
+    $reachable = [];
+    $queue = [];
+
+    foreach ($layout['winners'] ?? [] as $roundMatches) {
+        foreach ($roundMatches as $node) {
+            if (empty($node['next_loser']) || !is_array($node['next_loser'])) {
+                continue;
+            }
+            if (($node['next_loser']['stage'] ?? '') !== 'losers') {
+                continue;
+            }
+            $round = isset($node['next_loser']['round']) ? (int)$node['next_loser']['round'] : 0;
+            $matchIndex = isset($node['next_loser']['match_index']) ? (int)$node['next_loser']['match_index'] : 0;
+            if ($round <= 0 || $matchIndex <= 0) {
+                continue;
+            }
+            if (!isset($layout['losers'][$round][$matchIndex])) {
+                continue;
+            }
+            if (!isset($reachable[$round][$matchIndex])) {
+                $reachable[$round][$matchIndex] = true;
+                $queue[] = [$round, $matchIndex];
+            }
+        }
+    }
+
+    while (!empty($queue)) {
+        [$round, $matchIndex] = array_shift($queue);
+        $node = $layout['losers'][$round][$matchIndex] ?? null;
+        if (!$node) {
+            continue;
+        }
+        $next = $node['next_winner'] ?? null;
+        if (!$next || !is_array($next) || ($next['stage'] ?? '') !== 'losers') {
+            continue;
+        }
+        $nextRound = isset($next['round']) ? (int)$next['round'] : 0;
+        $nextMatch = isset($next['match_index']) ? (int)$next['match_index'] : 0;
+        if ($nextRound <= 0 || $nextMatch <= 0) {
+            continue;
+        }
+        if (!isset($layout['losers'][$nextRound][$nextMatch])) {
+            continue;
+        }
+        if (!isset($reachable[$nextRound][$nextMatch])) {
+            $reachable[$nextRound][$nextMatch] = true;
+            $queue[] = [$nextRound, $nextMatch];
+        }
+    }
+
+    if (empty($reachable)) {
+        $layout['losers'] = [];
+        return;
+    }
+
+    $roundsToKeep = array_keys($reachable);
+    sort($roundsToKeep);
+
+    $roundRemap = [];
+    $matchRemap = [];
+    $newLosers = [];
+
+    foreach ($roundsToKeep as $newRoundOffset => $oldRound) {
+        $roundRemap[$oldRound] = $newRoundOffset + 1;
+        $matches = $layout['losers'][$oldRound] ?? [];
+        $keptMatches = array_keys($reachable[$oldRound]);
+        sort($keptMatches);
+        $newMatches = [];
+        $matchRemap[$oldRound] = [];
+        $counter = 1;
+        foreach ($keptMatches as $oldMatchIndex) {
+            if (!isset($matches[$oldMatchIndex])) {
+                continue;
+            }
+            $node = $matches[$oldMatchIndex];
+            $node['round'] = $newRoundOffset + 1;
+            $node['match_index'] = $counter;
+            $newMatches[$counter] = $node;
+            $matchRemap[$oldRound][$oldMatchIndex] = $counter;
+            $counter++;
+        }
+        if (!empty($newMatches)) {
+            $newLosers[$newRoundOffset + 1] = $newMatches;
+        }
+    }
+
+    $layout['losers'] = $newLosers;
+
+    $remapLoserReference = static function (?array $reference) use ($roundRemap, $matchRemap): ?array {
+        if (!$reference || ($reference['stage'] ?? '') !== 'losers') {
+            return $reference;
+        }
+        $oldRound = isset($reference['round']) ? (int)$reference['round'] : 0;
+        $oldMatch = isset($reference['match_index']) ? (int)$reference['match_index'] : 0;
+        if ($oldRound <= 0 || $oldMatch <= 0) {
+            return null;
+        }
+        if (!isset($roundRemap[$oldRound]) || !isset($matchRemap[$oldRound][$oldMatch])) {
+            return null;
+        }
+        $reference['round'] = $roundRemap[$oldRound];
+        $reference['match_index'] = $matchRemap[$oldRound][$oldMatch];
+        return $reference;
+    };
+
+    foreach ($layout['winners'] as &$roundMatches) {
+        foreach ($roundMatches as &$node) {
+            if (!empty($node['next_loser'])) {
+                $updated = $remapLoserReference($node['next_loser']);
+                if ($updated === null) {
+                    unset($node['next_loser']);
+                } else {
+                    $node['next_loser'] = $updated;
+                }
+            }
+        }
+        unset($node);
+    }
+    unset($roundMatches);
+
+    foreach ($layout['losers'] as &$roundMatches) {
+        foreach ($roundMatches as &$node) {
+            if (!empty($node['sources']) && is_array($node['sources'])) {
+                foreach ($node['sources'] as $slot => $source) {
+                    $updated = $remapLoserReference($source);
+                    if ($updated === null) {
+                        unset($node['sources'][$slot]);
+                    } else {
+                        $node['sources'][$slot] = $updated;
+                    }
+                }
+            }
+            if (!empty($node['next_winner'])) {
+                $updated = $remapLoserReference($node['next_winner']);
+                if ($updated === null && ($node['next_winner']['stage'] ?? '') === 'losers') {
+                    unset($node['next_winner']);
+                } elseif ($updated !== null) {
+                    $node['next_winner'] = $updated;
+                }
+            }
+        }
+        unset($node);
+    }
+    unset($roundMatches);
 }
 
 function assign_bracket_source(array &$layout, array $source, array $destination): void
@@ -707,6 +898,9 @@ function build_double_elimination_layout(int $slotCount, array $firstRoundPairs 
             }
         }
     }
+
+    prune_unreachable_loser_matches($layout);
+    $layout['losers_rounds'] = count($layout['losers']);
 
     foreach ($layout['losers'] as $round => &$roundMatches) {
         foreach ($roundMatches as $matchIndex => &$node) {

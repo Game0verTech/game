@@ -24,7 +24,9 @@ switch ($action) {
             flash('error', 'You are already registered for this tournament.');
             redirect('/?page=dashboard');
         }
-        add_player_to_tournament($tournamentId, $user['id']);
+        if (add_player_to_tournament($tournamentId, $user['id'])) {
+            refresh_tournament_bracket_snapshot($tournamentId);
+        }
         flash('success', 'You have registered for ' . $tournament['name'] . '.');
         redirect('/?page=dashboard');
 
@@ -37,7 +39,9 @@ switch ($action) {
             flash('error', 'Withdrawals are only allowed while registration is open.');
             redirect('/?page=dashboard');
         }
-        remove_player_from_tournament($tournamentId, $user['id']);
+        if (remove_player_from_tournament($tournamentId, $user['id'])) {
+            refresh_tournament_bracket_snapshot($tournamentId);
+        }
         flash('success', 'You have been removed from ' . $tournament['name'] . '.');
         redirect('/?page=dashboard');
 
@@ -90,8 +94,12 @@ switch ($action) {
             flash('error', 'Please provide valid tournament details.');
             redirect('/?page=admin&t=view&id=' . $tournamentId);
         }
+        $typeChanged = $type !== $tournament['type'];
         update_tournament_details($tournamentId, $name, $type, $description, $scheduledAt, $location);
-        set_tournament_players($tournamentId, $selectedPlayers);
+        $playersChanged = set_tournament_players($tournamentId, $selectedPlayers);
+        if ($typeChanged && !$playersChanged) {
+            refresh_tournament_bracket_snapshot($tournamentId);
+        }
         flash('success', 'Tournament settings updated.');
         redirect('/?page=admin&t=view&id=' . $tournamentId);
 
@@ -137,16 +145,24 @@ switch ($action) {
             flash('error', 'Cannot add banned or unknown users.');
             redirect('/?page=admin&t=manage&id=' . $tournamentId);
         }
-        add_player_to_tournament($tournamentId, $userId);
-        flash('success', 'Player added.');
+        if (add_player_to_tournament($tournamentId, $userId)) {
+            refresh_tournament_bracket_snapshot($tournamentId);
+            flash('success', 'Player added.');
+        } else {
+            flash('info', 'Player was already registered.');
+        }
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
 
     case 'remove_player_admin':
         require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $userId = (int)($_POST['user_id'] ?? 0);
-        remove_player_from_tournament($tournamentId, $userId);
-        flash('success', 'Player removed.');
+        if (remove_player_from_tournament($tournamentId, $userId)) {
+            refresh_tournament_bracket_snapshot($tournamentId);
+            flash('success', 'Player removed.');
+        } else {
+            flash('info', 'Player was not registered.');
+        }
         redirect('/?page=admin&t=manage&id=' . $tournamentId);
 
     case 'save_bracket':
