@@ -2657,3 +2657,70 @@ function tournament_matches(int $tournamentId): array
     $stmt->execute([':tid' => $tournamentId]);
     return $stmt->fetchAll();
 }
+
+function determine_tournament_champion(array $tournament): ?int
+{
+    $tournamentId = isset($tournament['id']) ? (int)$tournament['id'] : 0;
+    if ($tournamentId <= 0) {
+        return null;
+    }
+
+    $type = $tournament['type'] ?? '';
+    $structure = null;
+
+    if ($type === 'round-robin') {
+        $structure = generate_bracket_structure($tournamentId);
+        $championMeta = $structure['meta']['champion']['id'] ?? null;
+        if ($championMeta) {
+            return (int)$championMeta;
+        }
+    }
+
+    $matches = tournament_matches($tournamentId);
+    if (!$matches) {
+        if ($structure && !empty($structure['meta']['standings'][0]['player_id'])) {
+            return (int)$structure['meta']['standings'][0]['player_id'];
+        }
+        return null;
+    }
+
+    $priorityMap = [
+        'finals' => 5,
+        'main' => 4,
+        'winners' => 3,
+        'losers' => 2,
+        'group' => 1,
+    ];
+
+    $bestScore = null;
+    $championId = null;
+
+    foreach ($matches as $match) {
+        $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : 0;
+        if ($winnerId <= 0) {
+            continue;
+        }
+
+        $stage = strtolower($match['stage'] ?? '');
+        $round = isset($match['round']) ? (int)$match['round'] : 0;
+        $matchIndex = isset($match['match_index']) ? (int)$match['match_index'] : 0;
+        $matchId = isset($match['id']) ? (int)$match['id'] : 0;
+        $priority = $priorityMap[$stage] ?? 0;
+
+        $scoreKey = [$priority, $round, $matchIndex, $matchId];
+        if ($bestScore === null || $scoreKey > $bestScore) {
+            $bestScore = $scoreKey;
+            $championId = $winnerId;
+        }
+    }
+
+    if ($championId !== null) {
+        return $championId;
+    }
+
+    if ($structure && !empty($structure['meta']['standings'][0]['player_id'])) {
+        return (int)$structure['meta']['standings'][0]['player_id'];
+    }
+
+    return null;
+}
