@@ -404,14 +404,43 @@ function build_double_elimination_layout(int $slotCount, array $firstRoundPairs 
 
     $firstRoundHasTwoPlayers = [];
     $meaningfulFirstRoundLosers = 0;
+    $winnersRoundParticipantCount = [];
+    $winnersRoundLoserIndex = [];
+    $winnersRoundLoserCount = [];
     foreach ($firstRoundPairs as $index => $pair) {
         $player1Id = $pair['player1']['id'] ?? null;
         $player2Id = $pair['player2']['id'] ?? null;
-        $hasBoth = $player1Id && $player2Id;
-        $firstRoundHasTwoPlayers[$index + 1] = $hasBoth;
-        if ($hasBoth) {
+        $playerCount = ($player1Id ? 1 : 0) + ($player2Id ? 1 : 0);
+        $matchNumber = $index + 1;
+        $firstRoundHasTwoPlayers[$matchNumber] = $playerCount >= 2;
+        $winnersRoundParticipantCount[1][$matchNumber] = $playerCount;
+        if ($playerCount >= 2) {
             $meaningfulFirstRoundLosers++;
+            $winnersRoundLoserIndex[1][$matchNumber] = $meaningfulFirstRoundLosers;
         }
+    }
+    $winnersRoundLoserCount[1] = $meaningfulFirstRoundLosers;
+
+    for ($round = 2; $round <= $winnersRounds; $round++) {
+        $matchCount = (int)max(1, $slotCount / pow(2, $round));
+        $loserSequence = 0;
+        for ($match = 1; $match <= $matchCount; $match++) {
+            $leftCount = $winnersRoundParticipantCount[$round - 1][$match * 2 - 1] ?? 0;
+            $rightCount = $winnersRoundParticipantCount[$round - 1][$match * 2] ?? 0;
+            $playerCount = 0;
+            if ($leftCount > 0) {
+                $playerCount++;
+            }
+            if ($rightCount > 0) {
+                $playerCount++;
+            }
+            $winnersRoundParticipantCount[$round][$match] = $playerCount;
+            if ($playerCount >= 2) {
+                $loserSequence++;
+                $winnersRoundLoserIndex[$round][$match] = $loserSequence;
+            }
+        }
+        $winnersRoundLoserCount[$round] = $loserSequence;
     }
 
     $skipInitialLosersRound = $losersRoundsOriginal > 0 && $meaningfulFirstRoundLosers <= 1;
@@ -586,25 +615,28 @@ function build_double_elimination_layout(int $slotCount, array $firstRoundPairs 
                 $destMatch = null;
                 $slot = 2;
                 if ($round === 1) {
-                    $targetEffective = 1 + ($layout['losers_round_offset'] ?? 0);
-                    $destRound = $resolveLosersRound($layout['losers_round_map'] ?? [], $targetEffective);
-                    $destMatch = (int)ceil($matchIndex / 2);
-                    $slot = ($matchIndex % 2 === 1) ? 1 : 2;
-                    $hasTwoPlayers = $firstRoundHasTwoPlayers[$matchIndex] ?? true;
-                    if (!$hasTwoPlayers) {
-                        $destRound = null;
-                    } elseif (($layout['losers_round_offset'] ?? 0) > 0) {
-                        $slot = 1;
+                    $loserSequence = $winnersRoundLoserIndex[1][$matchIndex] ?? null;
+                    if ($loserSequence !== null) {
+                        $targetEffective = 1 + ($layout['losers_round_offset'] ?? 0);
+                        $destRound = $resolveLosersRound($layout['losers_round_map'] ?? [], $targetEffective);
+                        $destMatch = (int)ceil($loserSequence / 2);
+                        $slot = ($loserSequence % 2 === 1) ? 1 : 2;
+                        if (($layout['losers_round_offset'] ?? 0) > 0) {
+                            $slot = 1;
+                        }
                     }
                 } else {
-                    $targetEffective = min($maxEffectiveRound, 2 * ($round - 1));
-                    while ($targetEffective >= 1 && !isset(($layout['losers_round_map'] ?? [])[$targetEffective])) {
-                        $targetEffective--;
-                    }
-                    if ($targetEffective >= 1) {
-                        $destRound = $resolveLosersRound($layout['losers_round_map'] ?? [], $targetEffective);
-                        $destMatch = $matchIndex;
-                        $slot = 2;
+                    $loserSequence = $winnersRoundLoserIndex[$round][$matchIndex] ?? null;
+                    if ($loserSequence !== null) {
+                        $targetEffective = min($maxEffectiveRound, 2 * ($round - 1));
+                        while ($targetEffective >= 1 && !isset(($layout['losers_round_map'] ?? [])[$targetEffective])) {
+                            $targetEffective--;
+                        }
+                        if ($targetEffective >= 1) {
+                            $destRound = $resolveLosersRound($layout['losers_round_map'] ?? [], $targetEffective);
+                            $destMatch = $loserSequence;
+                            $slot = 2;
+                        }
                     }
                 }
                 if ($destRound !== null && $destRound >= 1 && $destMatch !== null) {
