@@ -14,6 +14,19 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_user_banned (is_banned)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS user_email_verifications (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token CHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    consumed_at DATETIME DEFAULT NULL,
+    consumed_ip VARCHAR(45) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_user_email_verifications_token (token),
+    KEY idx_user_email_verifications_user (user_id),
+    CONSTRAINT fk_user_email_verifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS tournaments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(150) NOT NULL,

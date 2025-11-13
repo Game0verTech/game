@@ -43,15 +43,72 @@ function ensure_user_ban_column(): void
     }
 }
 
+function ensure_user_email_verification_table(): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+
+    $pdo = db();
+    $check = $pdo->query("SHOW TABLES LIKE 'user_email_verifications'");
+    if ($check->fetchColumn() !== false) {
+        return;
+    }
+
+    $pdo->exec(<<<SQL
+CREATE TABLE user_email_verifications (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token CHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    consumed_at DATETIME DEFAULT NULL,
+    consumed_ip VARCHAR(45) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_user_email_verifications_token (token),
+    KEY idx_user_email_verifications_user (user_id),
+    CONSTRAINT fk_user_email_verifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL
+    );
+}
+
+function issue_email_verification_token(int $userId): array
+{
+    ensure_user_email_verification_table();
+
+    $pdo = db();
+    $pdo->prepare('UPDATE user_email_verifications SET consumed_at = UTC_TIMESTAMP() WHERE user_id = :user AND consumed_at IS NULL')
+        ->execute([':user' => $userId]);
+
+    $token = bin2hex(random_bytes(32));
+    $expiresUtc = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->modify('+1 day');
+
+    $insert = $pdo->prepare('INSERT INTO user_email_verifications (user_id, token, expires_at) VALUES (:user_id, :token, :expires)');
+    $insert->execute([
+        ':user_id' => $userId,
+        ':token' => $token,
+        ':expires' => $expiresUtc->format('Y-m-d H:i:s'),
+    ]);
+
+    $legacy = $pdo->prepare('UPDATE users SET email_verify_token = NULL, email_verify_expires = NULL WHERE id = :id');
+    $legacy->execute([':id' => $userId]);
+
+    return [
+        'token' => $token,
+        'expires_at_utc' => $expiresUtc,
+    ];
+}
+
 function create_user(string $username, string $email, string $password, string $role = 'player', bool $isActive = false): array
 {
-    $generateVerification = !$isActive;
-    $token = $generateVerification ? bin2hex(random_bytes(32)) : null;
-    $expires = $generateVerification ? (new DateTime('+1 day'))->format('Y-m-d H:i:s') : null;
+    ensure_user_email_verification_table();
+
     $hash = password_hash($password, PASSWORD_DEFAULT);
 
-    $sql = 'INSERT INTO users (username, email, password_hash, role, is_active, is_banned, created_at, updated_at, email_verify_token, email_verify_expires)
-            VALUES (:username, :email, :password_hash, :role, :is_active, 0, NOW(), NOW(), :token, :expires)';
+    $sql = 'INSERT INTO users (username, email, password_hash, role, is_active, is_banned, created_at, updated_at, email_verify_token, email_verify_expires)'
+            . ' VALUES (:username, :email, :password_hash, :role, :is_active, 0, NOW(), NOW(), NULL, NULL)';
     $stmt = db()->prepare($sql);
     $stmt->execute([
         ':username' => $username,
@@ -59,12 +116,20 @@ function create_user(string $username, string $email, string $password, string $
         ':password_hash' => $hash,
         ':role' => $role,
         ':is_active' => $isActive ? 1 : 0,
-        ':token' => $token,
-        ':expires' => $expires,
     ]);
 
     $id = (int)db()->lastInsertId();
-    return get_user_by_id($id);
+    $user = get_user_by_id($id);
+
+    if (!$isActive) {
+        $verification = issue_email_verification_token($id);
+        $user['email_verify_token'] = $verification['token'];
+        $user['email_verify_expires'] = $verification['expires_at_utc']
+            ->setTimezone(new DateTimeZone(date_default_timezone_get()))
+            ->format('Y-m-d H:i:s');
+    }
+
+    return $user;
 }
 
 function update_user_password(int $userId, string $password): void
@@ -111,6 +176,70 @@ function authenticate_user(string $usernameOrEmail, string $password): ?array
 
 function mark_user_verified(string $token): bool
 {
+    ensure_user_email_verification_table();
+
+    $pdo = db();
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $select = $pdo->prepare('SELECT * FROM user_email_verifications WHERE token = :token ORDER BY id DESC LIMIT 1 FOR UPDATE');
+        $select->execute([':token' => $token]);
+        $record = $select->fetch();
+
+        if (!$record) {
+            if ($startedTransaction) {
+                $pdo->rollBack();
+            }
+            return legacy_mark_user_verified($token);
+        }
+
+        if (!empty($record['consumed_at'])) {
+            if ($startedTransaction) {
+                $pdo->rollBack();
+            }
+            return false;
+        }
+
+        $expiresAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$record['expires_at'], new DateTimeZone('UTC'));
+        if (!$expiresAt) {
+            if ($startedTransaction) {
+                $pdo->rollBack();
+            }
+            return false;
+        }
+
+        $nowUtc = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        if ($expiresAt <= $nowUtc) {
+            if ($startedTransaction) {
+                $pdo->rollBack();
+            }
+            return false;
+        }
+
+        $activate = $pdo->prepare('UPDATE users SET is_active = 1, email_verify_token = NULL, email_verify_expires = NULL, updated_at = NOW() WHERE id = :id');
+        $activate->execute([':id' => $record['user_id']]);
+
+        $consume = $pdo->prepare('UPDATE user_email_verifications SET consumed_at = UTC_TIMESTAMP() WHERE id = :id');
+        $consume->execute([':id' => $record['id']]);
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+function legacy_mark_user_verified(string $token): bool
+{
     $stmt = db()->prepare('SELECT * FROM users WHERE email_verify_token = :token');
     $stmt->execute([':token' => $token]);
     $user = $stmt->fetch();
@@ -143,15 +272,11 @@ function mark_user_verified(string $token): bool
 
 function regenerate_email_token(int $userId): array
 {
-    $token = bin2hex(random_bytes(32));
-    $expires = (new DateTime('+1 day'))->format('Y-m-d H:i:s');
-    $stmt = db()->prepare('UPDATE users SET email_verify_token = :token, email_verify_expires = :expires WHERE id = :id');
-    $stmt->execute([
-        ':token' => $token,
-        ':expires' => $expires,
-        ':id' => $userId,
-    ]);
-    return ['token' => $token, 'expires' => $expires];
+    $verification = issue_email_verification_token($userId);
+    return [
+        'token' => $verification['token'],
+        'expires' => $verification['expires_at_utc']->format('Y-m-d H:i:s'),
+    ];
 }
 
 function store_session_user(array $user): void
