@@ -1080,16 +1080,21 @@ button.danger:focus-visible,
 
 .bracket-container {
     position: relative;
-    overflow-x: auto;
+    overflow: auto;
     padding: clamp(32px, 4vw, 52px);
     border: 1px solid rgba(30, 144, 255, 0.28);
     border-radius: 26px;
     background: radial-gradient(circle at top left, rgba(30, 144, 255, 0.12), transparent 55%),
         linear-gradient(150deg, rgba(8, 14, 26, 0.95), rgba(6, 12, 24, 0.9));
-    min-height: 360px;
     box-shadow: var(--shadow-elevated);
     max-width: 100%;
+    cursor: grab;
     --bracket-zoom: 1;
+}
+
+.bracket-container.is-panning {
+    cursor: grabbing;
+    user-select: none;
 }
 
 .bracket-zoom-controls {
@@ -1306,6 +1311,12 @@ button.danger:focus-visible,
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.bracket-container.has-uniform-labels .bracket-match .team .label {
+    flex: 0 0 var(--bracket-team-label-width);
+    width: var(--bracket-team-label-width);
+    max-width: var(--bracket-team-label-width);
 }
 
 .bracket-match .team .score {
