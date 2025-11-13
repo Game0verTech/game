@@ -174,7 +174,7 @@ function authenticate_user(string $usernameOrEmail, string $password): ?array
     return null;
 }
 
-function mark_user_verified(string $token): bool
+function mark_user_verified(string $token): string
 {
     ensure_user_email_verification_table();
 
@@ -196,11 +196,19 @@ function mark_user_verified(string $token): bool
             return legacy_mark_user_verified($token);
         }
 
+        $user = get_user_by_id((int)$record['user_id']);
+        if (!$user) {
+            if ($startedTransaction) {
+                $pdo->rollBack();
+            }
+            return 'invalid';
+        }
+
         if (!empty($record['consumed_at'])) {
             if ($startedTransaction) {
                 $pdo->rollBack();
             }
-            return false;
+            return (int)$user['is_active'] === 1 ? 'already' : 'invalid';
         }
 
         $expiresAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$record['expires_at'], new DateTimeZone('UTC'));
@@ -208,7 +216,7 @@ function mark_user_verified(string $token): bool
             if ($startedTransaction) {
                 $pdo->rollBack();
             }
-            return false;
+            return 'invalid';
         }
 
         $nowUtc = new DateTimeImmutable('now', new DateTimeZone('UTC'));
@@ -216,7 +224,7 @@ function mark_user_verified(string $token): bool
             if ($startedTransaction) {
                 $pdo->rollBack();
             }
-            return false;
+            return 'expired';
         }
 
         $activate = $pdo->prepare('UPDATE users SET is_active = 1, email_verify_token = NULL, email_verify_expires = NULL, updated_at = NOW() WHERE id = :id');
@@ -229,7 +237,7 @@ function mark_user_verified(string $token): bool
             $pdo->commit();
         }
 
-        return true;
+        return 'verified';
     } catch (Throwable $e) {
         if ($startedTransaction && $pdo->inTransaction()) {
             $pdo->rollBack();
@@ -238,13 +246,17 @@ function mark_user_verified(string $token): bool
     }
 }
 
-function legacy_mark_user_verified(string $token): bool
+function legacy_mark_user_verified(string $token): string
 {
     $stmt = db()->prepare('SELECT * FROM users WHERE email_verify_token = :token');
     $stmt->execute([':token' => $token]);
     $user = $stmt->fetch();
     if (!$user) {
-        return false;
+        return 'invalid';
+    }
+
+    if ((int)$user['is_active'] === 1) {
+        return 'already';
     }
 
     $config = load_config();
@@ -262,12 +274,49 @@ function legacy_mark_user_verified(string $token): bool
     }
 
     if ($expiresAt instanceof DateTimeImmutable && $expiresAt <= $now) {
-        return false;
+        return 'expired';
     }
 
     $update = db()->prepare('UPDATE users SET is_active = 1, email_verify_token = NULL, email_verify_expires = NULL, updated_at = NOW() WHERE id = :id');
     $update->execute([':id' => $user['id']]);
-    return true;
+    return 'verified';
+}
+
+function manually_verify_user(int $userId): bool
+{
+    ensure_user_email_verification_table();
+
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT id, is_active FROM users WHERE id = :id');
+    $stmt->execute([':id' => $userId]);
+    $user = $stmt->fetch();
+    if (!$user) {
+        return false;
+    }
+
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $pdo->prepare('UPDATE users SET is_active = 1, email_verify_token = NULL, email_verify_expires = NULL, updated_at = NOW() WHERE id = :id')
+            ->execute([':id' => $userId]);
+
+        $pdo->prepare('UPDATE user_email_verifications SET consumed_at = COALESCE(consumed_at, UTC_TIMESTAMP()) WHERE user_id = :id AND consumed_at IS NULL')
+            ->execute([':id' => $userId]);
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 
 function regenerate_email_token(int $userId): array
