@@ -373,30 +373,90 @@ $(function () {
         };
     }
 
-    function groupRoundRobinMatches(matches) {
-        var grouped = {};
+    function groupRoundRobinMatches(matches, meta) {
         if (!Array.isArray(matches)) {
             return [];
         }
+
+        var grouped = {};
         matches.forEach(function (match) {
             if (!match || typeof match !== 'object') {
                 return;
             }
-            var round = Math.max(1, toInteger(match.round, 1));
-            grouped[round] = grouped[round] || [];
-            grouped[round].push(match);
+            var matchMeta = match.meta || {};
+            var stage = typeof matchMeta.stage === 'string' && matchMeta.stage.trim() !== ''
+                ? matchMeta.stage.trim()
+                : 'group';
+            if (!grouped[stage]) {
+                grouped[stage] = {};
+            }
+            var roundNumber = Math.max(1, toInteger(match.round, 1));
+            var metaRound = toInteger(matchMeta.round_number, null);
+            if (metaRound !== null) {
+                roundNumber = metaRound;
+            }
+            grouped[stage][roundNumber] = grouped[stage][roundNumber] || [];
+            grouped[stage][roundNumber].push(match);
         });
-        return Object.keys(grouped)
+
+        var stageOrder = ['group', 'finals'];
+        var stageLabels = {
+            group: 'Group Stage',
+            finals: 'Finals',
+        };
+
+        var sections = [];
+
+        stageOrder.forEach(function (stageKey) {
+            if (!grouped[stageKey]) {
+                return;
+            }
+            sections.push({
+                stage: stageKey,
+                label: stageLabels[stageKey] || null,
+                rounds: buildStageRounds(grouped[stageKey], stageKey, stageLabels[stageKey] || null),
+            });
+            delete grouped[stageKey];
+        });
+
+        Object.keys(grouped)
+            .sort()
+            .forEach(function (stageKey) {
+                sections.push({
+                    stage: stageKey,
+                    label: stageLabels[stageKey] || null,
+                    rounds: buildStageRounds(grouped[stageKey], stageKey, stageLabels[stageKey] || null),
+                });
+            });
+
+        return sections;
+    }
+
+    function buildStageRounds(roundMap, stageKey, defaultLabel) {
+        return Object.keys(roundMap)
             .map(function (key) {
                 return parseInt(key, 10);
             })
             .sort(function (left, right) {
                 return left - right;
             })
-            .map(function (round) {
+            .map(function (roundNumber) {
+                var list = roundMap[roundNumber];
+                var firstMeta = list && list.length ? list[0].meta || {} : {};
+                var title = null;
+                if (firstMeta && typeof firstMeta.stage_label === 'string' && firstMeta.stage_label.trim() !== '') {
+                    title = firstMeta.stage_label.trim();
+                } else if (stageKey === 'group') {
+                    title = 'Round ' + roundNumber;
+                } else if (defaultLabel) {
+                    title = defaultLabel;
+                } else {
+                    title = 'Round ' + roundNumber;
+                }
                 return {
-                    round: round,
-                    matches: grouped[round],
+                    round: roundNumber,
+                    title: title,
+                    matches: list,
                 };
             });
     }
@@ -415,6 +475,11 @@ $(function () {
 
         var teams = Array.isArray(state && state.teams) ? state.teams : [];
         var matches = Array.isArray(state && state.matches) ? state.matches : [];
+        var meta = state && state.meta ? state.meta : {};
+        var championId = null;
+        if (meta && meta.champion && meta.champion.id !== undefined && meta.champion.id !== null) {
+            championId = toInteger(meta.champion.id, null);
+        }
 
         if (!matches.length) {
             container.empty().append(
@@ -432,77 +497,95 @@ $(function () {
         view.append(svg);
         container.empty().append(view);
 
-        var rounds = groupRoundRobinMatches(matches);
-        rounds.forEach(function (roundEntry, roundIndex) {
-            var roundNumber = roundEntry.round;
-            var roundEl = $('<div class="bracket-round"></div>')
-                .attr('data-stage', 'group')
-                .attr('data-round-index', roundIndex)
-                .attr('data-round', roundNumber);
-            var title = $('<div class="bracket-round__title"></div>').text('Round ' + roundNumber);
-            var matchesContainer = $('<div class="bracket-round__matches"></div>');
-            roundEl.append(title, matchesContainer);
+        var sections = groupRoundRobinMatches(matches, meta);
+        sections.forEach(function (section) {
+            var stageKey = section.stage || 'group';
+            var stageEl = $('<div class="bracket-stage"></div>').attr('data-stage', stageKey);
+            if (section.label) {
+                stageEl.append($('<div class="bracket-stage__title"></div>').text(section.label));
+            }
+            var stageColumns = $('<div class="bracket-stage__columns"></div>');
+            stageEl.append(stageColumns);
+            columns.append(stageEl);
 
-            roundEntry.matches.forEach(function (match, matchIndex) {
-                var meta = match.meta && typeof match.meta === 'object' ? match.meta : {};
-                var matchId = toInteger(meta.match_id, null);
-                var matchNumber = toInteger(match.match_number, matchIndex + 1);
-                var matchEl = $('<div class="bracket-match"></div>')
-                    .attr('data-stage', 'group')
-                    .attr('data-round', roundNumber)
+            section.rounds.forEach(function (roundEntry, roundIndex) {
+                var roundNumber = roundEntry.round;
+                var roundEl = $('<div class="bracket-round"></div>')
+                    .attr('data-stage', stageKey)
                     .attr('data-round-index', roundIndex)
-                    .attr('data-match-index', matchIndex)
-                    .attr('data-match-number', matchNumber);
-                if (matchId) {
-                    matchEl.attr('data-match-id', matchId);
-                }
+                    .attr('data-round', roundNumber);
+                var titleText = roundEntry.title || ('Round ' + roundNumber);
+                var title = $('<div class="bracket-round__title"></div>').text(titleText);
+                var matchesContainer = $('<div class="bracket-round__matches"></div>');
+                roundEl.append(title, matchesContainer);
 
-                var statusMeta = {
-                    player1: meta.player1 || null,
-                    player2: meta.player2 || null,
-                    winner: meta.winner || null,
-                };
-                var winner = meta.winner && meta.winner.id ? meta.winner : null;
-                var info = {
-                    score1: winner ? (winner.slot === 1 ? 1 : 0) : null,
-                    score2: winner ? (winner.slot === 2 ? 1 : 0) : null,
-                };
-
-                [0, 1].forEach(function (slotIndex) {
-                    var slotTeam = slotIndex === 0 ? match.a : match.b;
-                    var teamIndex = toInteger(slotTeam && slotTeam.team, null);
-                    var teamData = teamIndex !== null && teams[teamIndex] ? teams[teamIndex] : {};
-                    var playerMeta = slotIndex === 0 ? statusMeta.player1 : statusMeta.player2;
-                    var name = playerMeta && playerMeta.name ? playerMeta.name : (teamData && teamData.name ? teamData.name : 'Team ' + (teamIndex + 1));
-                    var playerId = playerMeta && playerMeta.id ? toInteger(playerMeta.id, null) : null;
-                    var statusLabel = computeStatusLabel(info, slotIndex, statusMeta);
-                    var isSelectable = effectiveMode === 'admin' && matchId && playerId;
-                    var teamEl = buildTeamElement({
-                        slotIndex: slotIndex,
-                        name: name,
-                        playerId: playerId,
-                        playerName: name,
-                        score: null,
-                        statusLabel: statusLabel,
-                        isSelectable: isSelectable,
-                        matchId: matchId,
-                        roundIndex: roundIndex,
-                        matchIndex: matchIndex,
-                    });
-                    if (teamIndex !== null) {
-                        teamEl.attr('data-team-index', teamIndex);
+                roundEntry.matches.forEach(function (match, matchIndex) {
+                    var matchMeta = match.meta && typeof match.meta === 'object' ? match.meta : {};
+                    var matchId = toInteger(matchMeta.match_id, null);
+                    var matchNumber = toInteger(matchMeta.match_number, matchIndex + 1);
+                    var matchEl = $('<div class="bracket-match"></div>')
+                        .attr('data-stage', stageKey)
+                        .attr('data-round', roundNumber)
+                        .attr('data-round-index', roundIndex)
+                        .attr('data-match-index', matchIndex)
+                        .attr('data-match-number', matchNumber);
+                    if (matchId) {
+                        matchEl.attr('data-match-id', matchId);
                     }
-                    matchEl.append(teamEl);
+
+                    var statusMeta = {
+                        player1: matchMeta.player1 || null,
+                        player2: matchMeta.player2 || null,
+                        winner: matchMeta.winner || null,
+                    };
+                    var winnerMeta = matchMeta.winner && matchMeta.winner.id ? matchMeta.winner : null;
+                    var info = {
+                        score1: winnerMeta ? (winnerMeta.slot === 1 ? 1 : 0) : null,
+                        score2: winnerMeta ? (winnerMeta.slot === 2 ? 1 : 0) : null,
+                    };
+
+                    [0, 1].forEach(function (slotIndex) {
+                        var slotTeam = slotIndex === 0 ? match.a : match.b;
+                        var teamIndex = toInteger(slotTeam && slotTeam.team, null);
+                        var teamData = teamIndex !== null && teams[teamIndex] ? teams[teamIndex] : {};
+                        var playerMeta = slotIndex === 0 ? statusMeta.player1 : statusMeta.player2;
+                        var name = playerMeta && playerMeta.name ? playerMeta.name : (teamData && teamData.name ? teamData.name : 'Team ' + (teamIndex + 1));
+                        var playerId = playerMeta && playerMeta.id ? toInteger(playerMeta.id, null) : null;
+                        var statusLabel = computeStatusLabel(info, slotIndex, statusMeta);
+                        var isSelectable = effectiveMode === 'admin' && matchId && playerId;
+                        var isChampion = championId !== null && playerId !== null && playerId === championId;
+                        var teamEl = buildTeamElement({
+                            slotIndex: slotIndex,
+                            name: name,
+                            playerId: playerId,
+                            playerName: name,
+                            score: null,
+                            statusLabel: statusLabel,
+                            isSelectable: isSelectable,
+                            matchId: matchId,
+                            roundIndex: roundIndex,
+                            matchIndex: matchIndex,
+                            isChampion: isChampion,
+                        });
+                        if (teamIndex !== null) {
+                            teamEl.attr('data-team-index', teamIndex);
+                        }
+                        matchEl.append(teamEl);
+                    });
+
+                    matchesContainer.append(matchEl);
                 });
 
-                matchesContainer.append(matchEl);
+                stageColumns.append(roundEl);
             });
-
-            columns.append(roundEl);
         });
 
         container.data('groupData', state);
         container.data('groupState', JSON.stringify(state || {}));
+
+        if (effectiveMode === 'admin') {
+            updateMatchSummary(container, state);
+        }
 
         enableBracketPanning(container);
         refreshBracketGeometry(container);
@@ -1736,11 +1819,29 @@ $(function () {
         if (!table.length) {
             return;
         }
-        var rows = table.find('tbody tr');
-        if (!rows.length) {
-            return;
+        if (!table.find('tbody').length) {
+            table.append('<tbody></tbody>');
         }
-        var matches = flattenResults(data && data.results ? data.results : []);
+        var rows = table.find('tbody tr');
+        var matches = [];
+        if (data && Array.isArray(data.matches)) {
+            matches = data.matches.map(function (match) {
+                var meta = match && match.meta && typeof match.meta === 'object' ? match.meta : {};
+                var score1 = match && match.a && match.a.score !== undefined ? match.a.score : null;
+                var score2 = match && match.b && match.b.score !== undefined ? match.b.score : null;
+                if (score1 === null && score2 === null && meta.winner && meta.winner.slot) {
+                    score1 = meta.winner.slot === 1 ? 1 : 0;
+                    score2 = meta.winner.slot === 2 ? 1 : 0;
+                }
+                return {
+                    meta: meta,
+                    score1: score1,
+                    score2: score2,
+                };
+            });
+        } else {
+            matches = flattenResults(data && data.results ? data.results : []);
+        }
         var map = {};
         matches.forEach(function (item) {
             var meta = item.meta || {};
@@ -1759,19 +1860,56 @@ $(function () {
                     winnerName = meta.player2.name;
                 }
             }
+            var stageLabel = meta.stage ? String(meta.stage).toUpperCase() : '';
+            var roundValue = meta.round_number !== undefined && meta.round_number !== null
+                ? meta.round_number
+                : (meta.round !== undefined && meta.round !== null ? meta.round : '');
+            var matchNumber = meta.match_number !== undefined && meta.match_number !== null
+                ? meta.match_number
+                : '';
             map[meta.match_id] = {
                 players: escapeHtml(player1) + ' <span class="versus">vs</span> ' + escapeHtml(player2),
                 winner: winnerName ? winnerName : 'TBD',
+                stage: stageLabel,
+                round: roundValue,
+                matchLabel: matchNumber !== '' ? '#' + matchNumber : '',
             };
         });
+        var existingRows = {};
         rows.each(function () {
             var row = $(this);
             var matchId = parseInt(row.data('matchId'), 10);
-            if (!matchId || !map[matchId]) {
+            if (!isNaN(matchId)) {
+                existingRows[matchId] = row;
+            }
+        });
+        Object.keys(map).forEach(function (key) {
+            var matchId = parseInt(key, 10);
+            var entry = map[key];
+            if (!matchId) {
                 return;
             }
-            row.find('td').eq(3).html(map[matchId].players);
-            row.find('td').eq(4).text(map[matchId].winner);
+            var row = existingRows[matchId];
+            if (!row || !row.length) {
+                row = $('<tr></tr>').attr('data-match-id', matchId);
+                row.append($('<td></td>').text(entry.stage || ''));
+                row.append($('<td></td>').text(entry.round !== undefined ? entry.round : ''));
+                row.append($('<td></td>').text(entry.matchLabel || ''));
+                row.append($('<td></td>').html(entry.players));
+                row.append($('<td></td>').text(entry.winner));
+                table.find('tbody').append(row);
+                existingRows[matchId] = row;
+                return;
+            }
+            var cells = row.find('td');
+            if (cells.length < 5) {
+                return;
+            }
+            cells.eq(0).text(entry.stage || cells.eq(0).text());
+            cells.eq(1).text(entry.round !== undefined ? entry.round : cells.eq(1).text());
+            cells.eq(2).text(entry.matchLabel || cells.eq(2).text());
+            cells.eq(3).html(entry.players);
+            cells.eq(4).text(entry.winner);
         });
     }
 
