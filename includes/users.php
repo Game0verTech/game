@@ -111,12 +111,31 @@ function authenticate_user(string $usernameOrEmail, string $password): ?array
 
 function mark_user_verified(string $token): bool
 {
-    $stmt = db()->prepare('SELECT * FROM users WHERE email_verify_token = :token AND email_verify_expires > NOW()');
+    $stmt = db()->prepare('SELECT * FROM users WHERE email_verify_token = :token');
     $stmt->execute([':token' => $token]);
     $user = $stmt->fetch();
     if (!$user) {
         return false;
     }
+
+    $config = load_config();
+    $timezone = configured_timezone($config);
+    $tz = new DateTimeZone($timezone);
+    $now = new DateTimeImmutable('now', $tz);
+
+    $expiresAt = null;
+    $rawExpiry = $user['email_verify_expires'] ?? null;
+    if (!empty($rawExpiry)) {
+        $expiresAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawExpiry, $tz);
+        if ($expiresAt === false) {
+            $expiresAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s.u', $rawExpiry, $tz);
+        }
+    }
+
+    if ($expiresAt instanceof DateTimeImmutable && $expiresAt <= $now) {
+        return false;
+    }
+
     $update = db()->prepare('UPDATE users SET is_active = 1, email_verify_token = NULL, email_verify_expires = NULL, updated_at = NOW() WHERE id = :id');
     $update->execute([':id' => $user['id']]);
     return true;

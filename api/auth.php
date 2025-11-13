@@ -57,10 +57,12 @@ switch ($action) {
         }
         $expiresFormatted = $expiresAt->format('F j, Y g:i A T');
 
+        $messageLine = 'Thanks for signing up for Play for Purpose Game Night! Please confirm your email address to activate your account.';
         $usernameHtml = sanitize($username);
         $siteNameHtml = sanitize($siteName);
         $verifyUrlHtml = sanitize($verifyUrl);
         $expiresHtml = sanitize($expiresFormatted);
+        $messageHtml = sanitize($messageLine);
 
         $body = <<<HTML
 <!DOCTYPE html>
@@ -82,7 +84,7 @@ switch ($action) {
                     <tr>
                         <td style="padding:32px;font-family:Arial, Helvetica, sans-serif;color:#333333;font-size:16px;line-height:1.5;">
                             <p style="margin-top:0;">Hello {$usernameHtml},</p>
-                            <p>Thanks for signing up for {$siteNameHtml}! Please confirm your email address to activate your account.</p>
+                            <p>{$messageHtml}</p>
                             <p style="text-align:center;margin:32px 0;">
                                 <a href="{$verifyUrlHtml}" style="display:inline-block;background-color:#1f3c88;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:600;">Verify Email</a>
                             </p>
@@ -105,7 +107,7 @@ switch ($action) {
 HTML;
 
         $altBody = "Hello {$username},\n\n"
-            . "Thanks for signing up for {$siteName}! Please confirm your email address to activate your account.\n\n"
+            . "{$messageLine}\n\n"
             . "Verification link: {$verifyUrl}\n"
             . "This link expires on {$expiresFormatted}. If it stops working, you can request a new verification email from the login page.\n\n"
             . "If you didn't create this account, you can ignore this message.";
