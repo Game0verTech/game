@@ -2,9 +2,35 @@
 
 function site_url(string $path = ''): string
 {
+    if (preg_match('#^https?://#i', $path)) {
+        return $path;
+    }
+
     $config = load_config();
-    $base = $config['site']['url'] ?? '';
-    return rtrim($base, '/') . '/' . ltrim($path, '/');
+    $base = trim($config['site']['url'] ?? '');
+
+    if ($base === '' && isset($_SERVER['HTTP_HOST'])) {
+        $forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+        $isHttps = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+            || (isset($_SERVER['REQUEST_SCHEME']) && strtolower((string)$_SERVER['REQUEST_SCHEME']) === 'https')
+            || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+            || (is_string($forwardedProto) && strtolower($forwardedProto) === 'https');
+        $scheme = $isHttps ? 'https' : 'http';
+        $base = $scheme . '://' . $_SERVER['HTTP_HOST'];
+    }
+
+    $normalizedBase = rtrim($base, '/');
+    $normalizedPath = ltrim($path, '/');
+
+    if ($normalizedBase === '') {
+        return $normalizedPath === '' ? '/' : '/' . $normalizedPath;
+    }
+
+    if ($normalizedPath === '') {
+        return $normalizedBase . '/';
+    }
+
+    return $normalizedBase . '/' . $normalizedPath;
 }
 
 function redirect(string $path): void
