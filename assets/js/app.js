@@ -38,6 +38,476 @@ $(function () {
         return mode;
     }
 
+    function toInteger(value, fallback) {
+        var number = parseInt(value, 10);
+        return isFinite(number) ? number : fallback;
+    }
+
+    function toScore(value) {
+        if (value === null || value === undefined || value === '') {
+            return null;
+        }
+        var number = typeof value === 'number' ? value : parseFloat(value);
+        return isFinite(number) ? number : null;
+    }
+
+    function convertLegacyMatrix(results) {
+        if (!Array.isArray(results)) {
+            return [];
+        }
+        var matches = [];
+        var matchId = 1;
+        for (var i = 0; i < results.length; i++) {
+            var row = Array.isArray(results[i]) ? results[i] : [];
+            for (var j = i + 1; j < row.length; j++) {
+                var cell = row[j];
+                var aScore = null;
+                var bScore = null;
+                if (Array.isArray(cell)) {
+                    aScore = toScore(cell[0]);
+                    bScore = toScore(cell[1]);
+                }
+                matches.push({
+                    id: matchId++,
+                    round: 0,
+                    a: { team: i, score: aScore },
+                    b: { team: j, score: bScore }
+                });
+            }
+        }
+        return matches;
+    }
+
+    function buildRoundRobinMatches(teams) {
+        if (!Array.isArray(teams) || teams.length < 2) {
+            return [];
+        }
+        var placeholders = teams.slice();
+        var hasBye = placeholders.some(function (team) {
+            return team && team.is_bye;
+        });
+        if (placeholders.length % 2 === 1) {
+            if (!hasBye) {
+                var maxId = placeholders.reduce(function (max, team) {
+                    var id = toInteger(team && team.id, 0);
+                    return id > max ? id : max;
+                }, 0);
+                placeholders.push({ id: maxId + 1, name: 'BYE', is_bye: true });
+            } else {
+                placeholders.push({ id: placeholders.length + 1, name: 'BYE', is_bye: true });
+            }
+        }
+        var total = placeholders.length;
+        if (total % 2 === 1) {
+            placeholders.push({ id: total + 1, name: 'BYE', is_bye: true });
+            total = placeholders.length;
+        }
+        var arrangement = [];
+        for (var i = 0; i < total; i++) {
+            arrangement.push(i);
+        }
+        var rounds = total - 1;
+        var half = total / 2;
+        var matches = [];
+        var matchId = 1;
+        var roundCounters = {};
+        for (var round = 0; round < rounds; round++) {
+            var roundNumber = round + 1;
+            for (var pairIndex = 0; pairIndex < half; pairIndex++) {
+                var homeIndex = arrangement[pairIndex];
+                var awayIndex = arrangement[total - 1 - pairIndex];
+                var homeTeam = placeholders[homeIndex];
+                var awayTeam = placeholders[awayIndex];
+                if ((homeTeam && homeTeam.is_bye) || (awayTeam && awayTeam.is_bye)) {
+                    continue;
+                }
+                roundCounters[roundNumber] = (roundCounters[roundNumber] || 0) + 1;
+                var matchNumber = roundCounters[roundNumber];
+                matches.push({
+                    id: matchId++,
+                    round: roundNumber,
+                    match_number: matchNumber,
+                    a: { team: homeIndex },
+                    b: { team: awayIndex },
+                    meta: {
+                        stage: 'group',
+                        round_number: roundNumber,
+                        match_number: matchNumber,
+                    }
+                });
+            }
+            var fixed = arrangement[0];
+            var rest = arrangement.slice(1);
+            if (rest.length) {
+                rest.unshift(rest.pop());
+            }
+            arrangement = [fixed].concat(rest);
+        }
+        return matches;
+    }
+
+    function normalizeGroupPlayerMeta(player, teamIndex, teams) {
+        var index = typeof teamIndex === 'number' ? teamIndex : null;
+        var team = index !== null && teams[index] ? teams[index] : null;
+        if (team && team.is_bye) {
+            return null;
+        }
+
+        var normalized = {};
+        if (index !== null) {
+            normalized.team_index = index;
+        }
+
+        if (player && typeof player === 'object') {
+            var playerId = toInteger(player.id, null);
+            if (playerId !== null) {
+                normalized.id = playerId;
+            }
+            if (typeof player.name === 'string' && player.name.trim() !== '') {
+                normalized.name = player.name;
+            }
+        }
+
+        if (normalized.id === undefined && team && team.player_id !== undefined && team.player_id !== null) {
+            var teamPlayer = toInteger(team.player_id, null);
+            if (teamPlayer !== null) {
+                normalized.id = teamPlayer;
+            }
+        }
+
+        if (!normalized.name && team && typeof team.name === 'string' && team.name.trim() !== '') {
+            normalized.name = team.name;
+        }
+
+        if (normalized.id === undefined && normalized.name === undefined) {
+            return null;
+        }
+
+        if (!normalized.name) {
+            normalized.name = normalized.id ? 'Player #' + normalized.id : 'TBD';
+        }
+
+        return normalized;
+    }
+
+    function decorateGroupMatches(matches, teams) {
+        if (!Array.isArray(matches)) {
+            return [];
+        }
+        var roundCounters = {};
+        matches.forEach(function (match) {
+            if (!match || typeof match !== 'object') {
+                return;
+            }
+            var roundNumber = Math.max(1, toInteger(match.round, 1));
+            var homeIndex = toInteger(match.a && match.a.team, null);
+            var awayIndex = toInteger(match.b && match.b.team, null);
+            var homeScore = toScore(match.a && match.a.score);
+            var awayScore = toScore(match.b && match.b.score);
+
+            roundCounters[roundNumber] = (roundCounters[roundNumber] || 0) + 1;
+            if (!match.match_number) {
+                match.match_number = roundCounters[roundNumber];
+            }
+
+            var meta = match.meta && typeof match.meta === 'object' ? $.extend(true, {}, match.meta) : {};
+            meta.stage = 'group';
+            meta.match_id = toInteger(meta.match_id, null);
+            meta.match_number = toInteger(meta.match_number, match.match_number);
+            if (!meta.match_number) {
+                meta.match_number = roundCounters[roundNumber];
+            }
+            meta.round_number = Math.max(1, toInteger(meta.round_number, roundNumber));
+
+            match.round = roundNumber;
+            match.match_number = meta.match_number;
+            match.a = { team: homeIndex };
+            match.b = { team: awayIndex };
+
+            meta.player1 = normalizeGroupPlayerMeta(meta.player1, homeIndex, teams);
+            meta.player2 = normalizeGroupPlayerMeta(meta.player2, awayIndex, teams);
+
+            var winnerMeta = meta.winner && typeof meta.winner === 'object' ? $.extend(true, {}, meta.winner) : null;
+            if (winnerMeta && winnerMeta.id !== undefined) {
+                winnerMeta.id = toInteger(winnerMeta.id, null);
+                winnerMeta.slot = winnerMeta.slot === 2 ? 2 : 1;
+                if (!winnerMeta.name) {
+                    var slotPlayer = winnerMeta.slot === 1 ? meta.player1 : meta.player2;
+                    winnerMeta.name = slotPlayer ? slotPlayer.name : '';
+                }
+                if (winnerMeta.team_index === undefined || winnerMeta.team_index === null) {
+                    winnerMeta.team_index = winnerMeta.slot === 2 ? awayIndex : homeIndex;
+                }
+                if (!winnerMeta.id) {
+                    winnerMeta = null;
+                }
+            }
+
+            if (!winnerMeta && homeScore !== null && awayScore !== null && homeScore !== awayScore) {
+                var slot = homeScore > awayScore ? 1 : 2;
+                var slotPlayerMeta = slot === 1 ? meta.player1 : meta.player2;
+                if (slotPlayerMeta && slotPlayerMeta.id) {
+                    winnerMeta = {
+                        id: slotPlayerMeta.id,
+                        slot: slot,
+                        name: slotPlayerMeta.name || '',
+                        team_index: slot === 1 ? homeIndex : awayIndex,
+                    };
+                }
+            }
+
+            meta.winner = winnerMeta || null;
+            match.meta = meta;
+        });
+
+        matches.sort(function (left, right) {
+            var roundDiff = (left && left.round ? left.round : 0) - (right && right.round ? right.round : 0);
+            if (roundDiff !== 0) {
+                return roundDiff;
+            }
+            var leftNumber = toInteger(left && left.match_number, 0);
+            var rightNumber = toInteger(right && right.match_number, 0);
+            if (leftNumber !== rightNumber) {
+                return leftNumber - rightNumber;
+            }
+            return toInteger(left && left.id, 0) - toInteger(right && right.id, 0);
+        });
+
+        return matches;
+    }
+
+    function normalizeGroupData(raw) {
+        if (!raw || typeof raw !== 'object') {
+            return null;
+        }
+
+        var base = $.extend(true, {}, raw);
+        var teams = [];
+        var meta = base.meta && typeof base.meta === 'object' ? $.extend(true, {}, base.meta) : {};
+        var seenIds = {};
+
+        if (Array.isArray(base.teams)) {
+            base.teams.forEach(function (team, index) {
+                if (!team || typeof team !== 'object') {
+                    return;
+                }
+                var id = toInteger(team.id, index + 1);
+                if (id === null || seenIds[id]) {
+                    id = teams.length + 1;
+                }
+                seenIds[id] = true;
+                var name = typeof team.name === 'string' && team.name.trim() !== '' ? team.name : 'Team ' + id;
+                var playerId = toInteger(team.player_id, null);
+                var isBye = !!team.is_bye || name.trim().toUpperCase() === 'BYE';
+                teams.push({
+                    id: id,
+                    name: name,
+                    player_id: playerId,
+                    is_bye: isBye,
+                });
+            });
+        }
+
+        var maxId = teams.reduce(function (max, team) {
+            return team.id > max ? team.id : max;
+        }, 0);
+
+        if (teams.length > 0 && teams.length % 2 === 1) {
+            var byeId = maxId + 1;
+            teams.push({ id: byeId, name: 'BYE', is_bye: true });
+            meta.bye_team_id = byeId;
+        } else if (!meta.bye_team_id) {
+            for (var i = 0; i < teams.length; i++) {
+                if (teams[i].is_bye) {
+                    meta.bye_team_id = teams[i].id;
+                    break;
+                }
+            }
+        }
+
+        meta.has_bye = !!meta.bye_team_id;
+        meta.format = meta.format || 'round-robin';
+
+        var matches = [];
+        if (Array.isArray(base.matches) && base.matches.length) {
+            base.matches.forEach(function (match) {
+                if (!match || typeof match !== 'object') {
+                    return;
+                }
+                var homeIndex = toInteger(match.a && match.a.team, null);
+                var awayIndex = toInteger(match.b && match.b.team, null);
+                if (homeIndex === null || awayIndex === null) {
+                    return;
+                }
+                matches.push({
+                    id: toInteger(match.id, matches.length + 1),
+                    round: Math.max(1, toInteger(match.round, 1)),
+                    match_number: toInteger(match.match_number, null),
+                    a: match.a || { team: homeIndex },
+                    b: match.b || { team: awayIndex },
+                    meta: match.meta || {},
+                });
+            });
+        } else if (Array.isArray(base.results) && base.results.length) {
+            matches = convertLegacyMatrix(base.results);
+        }
+
+        if (!matches.length) {
+            matches = buildRoundRobinMatches(teams);
+        }
+
+        matches = decorateGroupMatches(matches, teams);
+
+        meta.rounds = matches.reduce(function (max, match) {
+            return Math.max(max, match.round || 0);
+        }, teams.length > 1 ? teams.length - 1 : 0);
+
+        if (!meta.generated_at) {
+            meta.generated_at = new Date().toISOString();
+        }
+
+        return {
+            teams: teams,
+            matches: matches,
+            meta: meta,
+        };
+    }
+
+    function groupRoundRobinMatches(matches) {
+        var grouped = {};
+        if (!Array.isArray(matches)) {
+            return [];
+        }
+        matches.forEach(function (match) {
+            if (!match || typeof match !== 'object') {
+                return;
+            }
+            var round = Math.max(1, toInteger(match.round, 1));
+            grouped[round] = grouped[round] || [];
+            grouped[round].push(match);
+        });
+        return Object.keys(grouped)
+            .map(function (key) {
+                return parseInt(key, 10);
+            })
+            .sort(function (left, right) {
+                return left - right;
+            })
+            .map(function (round) {
+                return {
+                    round: round,
+                    matches: grouped[round],
+                };
+            });
+    }
+    function renderRoundRobinLayout(container, state, mode) {
+        if (!container || !container.length) {
+            return;
+        }
+
+        var effectiveMode = normalizeMode(mode);
+        container.data('mode', effectiveMode);
+        container.attr('data-mode', effectiveMode);
+        container.attr('data-format', 'round-robin');
+        container.removeClass('round-robin-container');
+        container.addClass('group-container');
+        container.addClass('bracket-container');
+
+        var teams = Array.isArray(state && state.teams) ? state.teams : [];
+        var matches = Array.isArray(state && state.matches) ? state.matches : [];
+
+        if (!matches.length) {
+            container.empty().append(
+                $('<p class="bracket-placeholder"></p>').text('Round robin schedule will appear once matches are seeded.')
+            );
+            container.data('groupData', state);
+            container.data('groupState', JSON.stringify(state || {}));
+            return;
+        }
+
+        var view = $('<div class="bracket-view"></div>');
+        var columns = $('<div class="bracket-columns"></div>');
+        var svg = $('<svg class="bracket-lines" aria-hidden="true" focusable="false"></svg>');
+        view.append(columns);
+        view.append(svg);
+        container.empty().append(view);
+
+        var rounds = groupRoundRobinMatches(matches);
+        rounds.forEach(function (roundEntry, roundIndex) {
+            var roundNumber = roundEntry.round;
+            var roundEl = $('<div class="bracket-round"></div>')
+                .attr('data-stage', 'group')
+                .attr('data-round-index', roundIndex)
+                .attr('data-round', roundNumber);
+            var title = $('<div class="bracket-round__title"></div>').text('Round ' + roundNumber);
+            var matchesContainer = $('<div class="bracket-round__matches"></div>');
+            roundEl.append(title, matchesContainer);
+
+            roundEntry.matches.forEach(function (match, matchIndex) {
+                var meta = match.meta && typeof match.meta === 'object' ? match.meta : {};
+                var matchId = toInteger(meta.match_id, null);
+                var matchNumber = toInteger(match.match_number, matchIndex + 1);
+                var matchEl = $('<div class="bracket-match"></div>')
+                    .attr('data-stage', 'group')
+                    .attr('data-round', roundNumber)
+                    .attr('data-round-index', roundIndex)
+                    .attr('data-match-index', matchIndex)
+                    .attr('data-match-number', matchNumber);
+                if (matchId) {
+                    matchEl.attr('data-match-id', matchId);
+                }
+
+                var statusMeta = {
+                    player1: meta.player1 || null,
+                    player2: meta.player2 || null,
+                    winner: meta.winner || null,
+                };
+                var winner = meta.winner && meta.winner.id ? meta.winner : null;
+                var info = {
+                    score1: winner ? (winner.slot === 1 ? 1 : 0) : null,
+                    score2: winner ? (winner.slot === 2 ? 1 : 0) : null,
+                };
+
+                [0, 1].forEach(function (slotIndex) {
+                    var slotTeam = slotIndex === 0 ? match.a : match.b;
+                    var teamIndex = toInteger(slotTeam && slotTeam.team, null);
+                    var teamData = teamIndex !== null && teams[teamIndex] ? teams[teamIndex] : {};
+                    var playerMeta = slotIndex === 0 ? statusMeta.player1 : statusMeta.player2;
+                    var name = playerMeta && playerMeta.name ? playerMeta.name : (teamData && teamData.name ? teamData.name : 'Team ' + (teamIndex + 1));
+                    var playerId = playerMeta && playerMeta.id ? toInteger(playerMeta.id, null) : null;
+                    var statusLabel = computeStatusLabel(info, slotIndex, statusMeta);
+                    var isSelectable = effectiveMode === 'admin' && matchId && playerId;
+                    var teamEl = buildTeamElement({
+                        slotIndex: slotIndex,
+                        name: name,
+                        playerId: playerId,
+                        playerName: name,
+                        score: null,
+                        statusLabel: statusLabel,
+                        isSelectable: isSelectable,
+                        matchId: matchId,
+                        roundIndex: roundIndex,
+                        matchIndex: matchIndex,
+                    });
+                    if (teamIndex !== null) {
+                        teamEl.attr('data-team-index', teamIndex);
+                    }
+                    matchEl.append(teamEl);
+                });
+
+                matchesContainer.append(matchEl);
+            });
+
+            columns.append(roundEl);
+        });
+
+        container.data('groupData', state);
+        container.data('groupState', JSON.stringify(state || {}));
+
+        enableBracketPanning(container);
+        refreshBracketGeometry(container);
+        enableAdminControls(container, effectiveMode);
+    }
     function clearTeamHighlight(container) {
         if (!container || !container.length) {
             return;
@@ -1719,6 +2189,80 @@ $(function () {
         container.data('poller', poller);
     }
 
+
+    function fetchGroup(container, tournamentId, mode) {
+        $.getJSON('/api/bracket.php', { tournament_id: tournamentId })
+            .done(function (response) {
+                if (response && response.status) {
+                    container.data('status', response.status);
+                    container.attr('data-status', response.status);
+                }
+                var payload = response ? response.group || response.bracket : null;
+                if (!payload) {
+                    return;
+                }
+                var normalized = normalizeGroupData(payload);
+                if (!normalized) {
+                    return;
+                }
+                var serialized = JSON.stringify(normalized || {});
+                if (container.data('groupState') === serialized) {
+                    return;
+                }
+                renderRoundRobinLayout(container, normalized, mode);
+                container.data('groupData', normalized);
+                container.data('groupState', serialized);
+            })
+            .fail(function (xhr) {
+                console.error('Failed to refresh groups', xhr);
+            });
+    }
+
+    function applyGroupPayload(container, payload, mode) {
+        if (!container || !container.length || !payload) {
+            return false;
+        }
+        var effectiveMode = normalizeMode(mode || container.data('mode'));
+        if (payload.status) {
+            container.data('status', payload.status);
+            container.attr('data-status', payload.status);
+        }
+        var data = payload.group || payload.bracket || null;
+        if (!data) {
+            return false;
+        }
+        var normalized = normalizeGroupData(data);
+        if (!normalized) {
+            return false;
+        }
+        renderRoundRobinLayout(container, normalized, effectiveMode);
+        container.data('groupData', normalized);
+        container.data('groupState', JSON.stringify(normalized || {}));
+        return true;
+    }
+
+    function setupGroupPolling(container, tournamentId, mode) {
+        if (!tournamentId) {
+            return;
+        }
+        fetchGroup(container, tournamentId, mode);
+        if (!shouldPoll(container, mode)) {
+            return;
+        }
+        var interval = parseInt(container.data('refreshInterval'), 10);
+        if (!interval || interval < 1500) {
+            interval = 2000;
+        }
+        var existing = container.data('poller');
+        if (existing) {
+            clearInterval(existing);
+        }
+        var poller = window.setInterval(function () {
+            fetchGroup(container, tournamentId, mode);
+        }, interval);
+        container.data('poller', poller);
+    }
+
     function applyBracketPayload(container, payload, mode) {
         if (!container || !container.length || !payload) {
             return false;
@@ -1741,6 +2285,7 @@ $(function () {
             return;
         }
         var mode = normalizeMode(container.data('mode') || 'admin');
+        var isGroup = container.hasClass('group-container');
         container.addClass('is-updating');
         $.ajax({
             method: 'POST',
@@ -1755,8 +2300,13 @@ $(function () {
             },
         })
             .done(function (response) {
-                if (!applyBracketPayload(container, response, mode)) {
-                    fetchBracket(container, tournamentId, mode);
+                var applied = isGroup ? applyGroupPayload(container, response, mode) : applyBracketPayload(container, response, mode);
+                if (!applied) {
+                    if (isGroup) {
+                        fetchGroup(container, tournamentId, mode);
+                    } else {
+                        fetchBracket(container, tournamentId, mode);
+                    }
                 }
                 container.removeClass('has-error');
                 container.removeData('lastError');
@@ -1764,8 +2314,11 @@ $(function () {
             .fail(function (xhr, textStatus) {
                 if (textStatus === 'parsererror') {
                     var parsed = parseJsonString(xhr.responseText);
-                    if (applyBracketPayload(container, parsed, mode)) {
-                        return;
+                    if (parsed) {
+                        var fallbackApplied = isGroup ? applyGroupPayload(container, parsed, mode) : applyBracketPayload(container, parsed, mode);
+                        if (fallbackApplied) {
+                            return;
+                        }
                     }
                 }
                 if (xhr.status && xhr.status < 400) {
@@ -1774,7 +2327,11 @@ $(function () {
                         statusText: xhr.statusText,
                         textStatus: textStatus,
                     });
-                    fetchBracket(container, tournamentId, mode);
+                    if (isGroup) {
+                        fetchGroup(container, tournamentId, mode);
+                    } else {
+                        fetchBracket(container, tournamentId, mode);
+                    }
                     return;
                 }
                 var response = xhr.responseJSON || parseJsonString(xhr.responseText);
@@ -1850,25 +2407,34 @@ $(function () {
         setupPolling(container, tournamentId, mode);
     });
 
+
     $('.group-container').each(function () {
         var container = $(this);
-        var data = parseJsonPayload(container, 'group');
-        var mode = container.data('mode');
-        var field = container.data('target');
-        if (!data) {
+        var rawData = parseJsonPayload(container, 'group');
+        var mode = normalizeMode(container.data('mode'));
+
+        if (!rawData) {
+            container.empty().append($('<p class="muted"></p>').text('Round robin groups will appear once the tournament is live.'));
+            var tournamentIdMissing = container.data('tournamentId');
+            setupGroupPolling(container, tournamentIdMissing, mode);
             return;
         }
-        var options = { data: data };
-        if (mode !== 'admin') {
-            options.readonly = true;
-        } else if (field) {
-            options.onChange = function (updated) {
-                $('#' + field).val(JSON.stringify(updated));
-            };
-        }
-        container.group(options);
-    });
 
+        var normalized = normalizeGroupData(rawData);
+        if (!normalized) {
+            container.empty().append($('<p class="muted"></p>').text('Round robin data could not be loaded.'));
+            var tournamentIdInvalid = container.data('tournamentId');
+            setupGroupPolling(container, tournamentIdInvalid, mode);
+            return;
+        }
+
+        renderRoundRobinLayout(container, normalized, mode);
+        container.data('groupData', normalized);
+        container.data('groupState', JSON.stringify(normalized || {}));
+
+        var tournamentId = container.data('tournamentId');
+        setupGroupPolling(container, tournamentId, mode);
+    });
     $('.js-confirm').on('submit', function (e) {
         var message = $(this).data('confirm') || 'Are you sure?';
         if (!window.confirm(message)) {
