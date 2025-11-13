@@ -26,6 +26,16 @@ function db(): PDO
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
 
+    // Ensure MySQL uses UTC for time-based comparisons so that timestamps generated in PHP match
+    // the values checked with NOW() and related functions. Without this, differences between the
+    // PHP timezone (set to UTC in bootstrap.php) and the MySQL session timezone could cause newly
+    // generated verification tokens to appear expired immediately.
+    try {
+        $pdo->exec("SET time_zone = '+00:00'");
+    } catch (PDOException $e) {
+        error_log('Failed to set database time zone: ' . $e->getMessage());
+    }
+
     return $pdo;
 }
 
