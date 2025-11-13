@@ -311,16 +311,19 @@ if ($isTournamentTab) {
             </div>
         </div>
         <?php if ($viewTournament['type'] === 'round-robin'): ?>
+            <?php $groupJson = $viewTournament['groups_json'] ?? json_encode(generate_bracket_structure($viewTournament['id'])); ?>
             <div class="card">
-                <h3>Round Robin Groups</h3>
-                <form method="post" action="/api/tournaments.php">
-                    <input type="hidden" name="action" value="save_group">
-                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                    <input type="hidden" name="tournament_id" value="<?= (int)$viewTournament['id'] ?>">
-                    <input type="hidden" id="group_json" name="group_json" value='<?= sanitize($viewTournament['groups_json'] ?? json_encode(generate_bracket_structure($viewTournament['id']))) ?>'>
-                    <div class="group-container" data-group='<?= sanitize($viewTournament['groups_json'] ?? json_encode(generate_bracket_structure($viewTournament['id']))) ?>' data-mode="admin" data-target="group_json"></div>
-                    <button type="submit" class="btn secondary">Save Groups</button>
-                </form>
+                <h3>Round Robin</h3>
+                <p class="muted">Click or tap a competitor to mark the winner. Changes are saved automatically.</p>
+                <div
+                    class="group-container"
+                    data-group='<?= sanitize($groupJson) ?>'
+                    data-mode="admin"
+                    data-token="<?= csrf_token() ?>"
+                    data-tournament-id="<?= (int)$viewTournament['id'] ?>"
+                    data-status="<?= sanitize($viewTournament['status']) ?>"
+                    data-live="1"
+                ></div>
             </div>
         <?php else: ?>
             <div class="card">
