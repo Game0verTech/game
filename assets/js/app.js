@@ -609,9 +609,11 @@ $(function () {
 
         container.removeClass('has-uniform-labels');
         container.css('--bracket-team-label-width', '');
+        container.addClass('is-measuring-labels');
 
         var labels = container.find('.bracket-match .team .label');
         if (!labels.length) {
+            container.removeClass('is-measuring-labels');
             return;
         }
 
@@ -627,6 +629,8 @@ $(function () {
             container.css('--bracket-team-label-width', Math.ceil(maxWidth + 6) + 'px');
             container.addClass('has-uniform-labels');
         }
+
+        container.removeClass('is-measuring-labels');
     }
 
     function updateBracketContainerSize(container) {
@@ -833,8 +837,10 @@ $(function () {
         var statusLabel = options.statusLabel;
         if (statusLabel) {
             team.attr('data-status-label', statusLabel);
+            label.attr('data-status-label', statusLabel);
         } else {
             team.removeAttr('data-status-label');
+            label.removeAttr('data-status-label');
         }
 
         team.removeClass('status-win status-loss status-ready status-tbd is-champion');
