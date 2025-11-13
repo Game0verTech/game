@@ -39,3 +39,21 @@ function create_install_lock(): void
     file_put_contents(INSTALL_LOCK_PATH, date(DATE_ATOM));
     @chmod(INSTALL_LOCK_PATH, 0440);
 }
+
+function configured_timezone(array $config): string
+{
+    static $validTimezones;
+
+    if ($validTimezones === null) {
+        $validTimezones = timezone_identifiers_list();
+    }
+
+    $timezone = $config['app']['timezone'] ?? 'America/New_York';
+
+    if (!in_array($timezone, $validTimezones, true)) {
+        error_log(sprintf('Invalid timezone "%s" in configuration. Falling back to America/New_York.', $timezone));
+        $timezone = 'America/New_York';
+    }
+
+    return $timezone;
+}

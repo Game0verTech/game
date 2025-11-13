@@ -2,6 +2,9 @@
 
 require_once __DIR__ . '/config.php';
 
+$config = env_config_exists() ? load_config() : [];
+$timezone = configured_timezone($config);
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start([
         'cookie_httponly' => true,
@@ -9,7 +12,7 @@ if (session_status() === PHP_SESSION_NONE) {
     ]);
 }
 
-date_default_timezone_set('UTC');
+date_default_timezone_set($timezone);
 
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/db.php';
