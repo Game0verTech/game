@@ -341,7 +341,8 @@ $(function () {
             }
         }
 
-        var playerName = $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label').text()) || 'this player';
+        var playerName =
+            $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label-text').text()) || 'this player';
 
         if (roundIndex !== null && !team.attr('data-round-index')) {
             team.attr('data-round-index', roundIndex);
@@ -527,7 +528,7 @@ $(function () {
         return isNaN(score) ? null : score;
     }
 
-    var BRACKET_ZOOM_MIN = 0.6;
+    var BRACKET_ZOOM_MIN = 0.35;
     var BRACKET_ZOOM_MAX = 1.6;
     var BRACKET_ZOOM_STEP = 0.1;
 
@@ -602,10 +603,188 @@ $(function () {
         updateZoomButtonState(container);
     }
 
+    function updateBracketLabelWidths(container) {
+        if (!container || !container.length) {
+            return;
+        }
+
+        container.removeClass('has-uniform-labels');
+        container.css('--bracket-team-label-width', '');
+        container.addClass('is-measuring-labels');
+
+        var labels = container.find('.bracket-match .team .label-text');
+        if (!labels.length) {
+            container.removeClass('is-measuring-labels');
+            return;
+        }
+
+        var maxWidth = 0;
+        labels.each(function () {
+            var width = this ? this.scrollWidth : 0;
+            if (width > maxWidth) {
+                maxWidth = width;
+            }
+        });
+
+        if (maxWidth > 0) {
+            container.css('--bracket-team-label-width', Math.ceil(maxWidth + 4) + 'px');
+            container.addClass('has-uniform-labels');
+        }
+
+        container.removeClass('is-measuring-labels');
+    }
+
+    function updateBracketContainerSize(container) {
+        if (!container || !container.length) {
+            return;
+        }
+
+        var view = container.find('.bracket-view');
+        var columns = view.find('.bracket-columns');
+
+        if (!view.length || !columns.length) {
+            container.css('height', '');
+            container.css('max-height', '');
+            return;
+        }
+
+        var baseHeight = columns[0].scrollHeight;
+        if (!baseHeight) {
+            baseHeight = columns.outerHeight(true) || view.outerHeight(true) || 0;
+        }
+
+        if (!baseHeight) {
+            container.css('height', '');
+            container.css('max-height', '');
+            return;
+        }
+
+        var zoomValue = 1;
+        try {
+            var computed = window.getComputedStyle(container[0]);
+            var parsed = computed ? parseFloat(computed.getPropertyValue('--bracket-zoom')) : NaN;
+            if (!Number.isNaN(parsed) && parsed > 0) {
+                zoomValue = parsed;
+            }
+            var paddingTop = parseFloat(computed.paddingTop) || 0;
+            var paddingBottom = parseFloat(computed.paddingBottom) || 0;
+            var scaledHeight = baseHeight * zoomValue;
+            var totalHeight = Math.ceil(scaledHeight + paddingTop + paddingBottom);
+            container.css('height', totalHeight + 'px');
+        } catch (err) {
+            container.css('height', Math.ceil(baseHeight) + 'px');
+        }
+    }
+
+    function updateBracketMetrics(container) {
+        updateBracketLabelWidths(container);
+        updateBracketContainerSize(container);
+    }
+
+    function isBracketInteractiveTarget(target) {
+        if (!target) {
+            return false;
+        }
+        return (
+            $(target).closest('button, a, input, textarea, select, .team.is-selectable, .bracket-context-menu').length > 0
+        );
+    }
+
+    function enableBracketPanning(container) {
+        if (!container || !container.length) {
+            return;
+        }
+
+        var activePointerId = null;
+        var startX = 0;
+        var startY = 0;
+        var startScrollLeft = 0;
+        var startScrollTop = 0;
+
+        container.off('.bracketPan');
+
+        container.on('pointerdown.bracketPan', function (event) {
+            var pointerType = event.pointerType || 'mouse';
+            if (pointerType === 'touch') {
+                return;
+            }
+            if (pointerType === 'mouse' && event.button !== 0) {
+                return;
+            }
+            if (isBracketInteractiveTarget(event.target)) {
+                return;
+            }
+
+            activePointerId = event.pointerId != null ? event.pointerId : 'mouse';
+            startX = event.clientX;
+            startY = event.clientY;
+            startScrollLeft = container.scrollLeft();
+            startScrollTop = container.scrollTop();
+            container.addClass('is-panning');
+            event.preventDefault();
+
+            if (container[0] && container[0].setPointerCapture && event.pointerId != null) {
+                try {
+                    container[0].setPointerCapture(event.pointerId);
+                } catch (captureError) {
+                    // Ignore capture errors on unsupported browsers.
+                }
+            }
+        });
+
+        container.on('pointermove.bracketPan', function (event) {
+            if (activePointerId === null) {
+                return;
+            }
+            if (event.pointerId != null && event.pointerId !== activePointerId) {
+                return;
+            }
+
+            var deltaX = event.clientX - startX;
+            var deltaY = event.clientY - startY;
+            container.scrollLeft(startScrollLeft - deltaX);
+            container.scrollTop(startScrollTop - deltaY);
+            event.preventDefault();
+        });
+
+        function endPan(event) {
+            if (activePointerId === null) {
+                return;
+            }
+            if (event.pointerId != null && event.pointerId !== activePointerId) {
+                return;
+            }
+
+            activePointerId = null;
+            container.removeClass('is-panning');
+
+            if (container[0] && container[0].releasePointerCapture && event.pointerId != null) {
+                try {
+                    container[0].releasePointerCapture(event.pointerId);
+                } catch (releaseError) {
+                    // Ignore release errors on unsupported browsers.
+                }
+            }
+        }
+
+        container.on('pointerup.bracketPan pointercancel.bracketPan', endPan);
+        container.on('pointerleave.bracketPan', function (event) {
+            if (activePointerId === null) {
+                return;
+            }
+            if (event.pointerId != null && event.pointerId !== activePointerId) {
+                return;
+            }
+            endPan(event);
+        });
+    }
+
     function buildTeamElement(options) {
         var team = $('<div class="team"></div>');
         team.attr('data-slot', options.slotIndex + 1);
-        var label = $('<span class="label"></span>').text(options.name || 'TBD');
+        var label = $('<span class="label"></span>');
+        var labelText = $('<span class="label-text"></span>').text(options.name || 'TBD');
+        label.append(labelText);
         var score = $('<span class="score"></span>');
         var rawScore = options.score;
         var normalizedScore = rawScore;
@@ -659,8 +838,13 @@ $(function () {
         }
 
         var statusLabel = options.statusLabel;
+        if (typeof statusLabel === 'string') {
+            statusLabel = statusLabel.trim();
+        }
+        var statusBadge = null;
         if (statusLabel) {
             team.attr('data-status-label', statusLabel);
+            statusBadge = $('<span class="status-badge"></span>').text(statusLabel);
         } else {
             team.removeAttr('data-status-label');
         }
@@ -687,9 +871,13 @@ $(function () {
             team.addClass('is-champion');
             team.attr('data-champion', '1');
             var crown = $('<span class="champion-icon" role="img" aria-label="Champion" title="Champion"></span>').text('👑');
-            label.append(' ').append(crown);
+            label.append(crown);
         } else {
             team.removeAttr('data-champion');
+        }
+
+        if (statusBadge) {
+            label.append(statusBadge);
         }
 
         return team;
@@ -960,9 +1148,11 @@ $(function () {
     function refreshBracketGeometry(container) {
         var view = container.find('.bracket-view');
         if (!view.length) {
+            updateBracketContainerSize(container);
             return;
         }
         layoutBracket(view);
+        updateBracketMetrics(container);
         updateBracketConnectors(view);
     }
 
@@ -1342,6 +1532,12 @@ $(function () {
 
         if (!hasRenderableMatches(data)) {
             container.empty();
+            container.removeClass('has-uniform-labels is-panning');
+            container.css('--bracket-team-label-width', '');
+            container.css('height', '');
+            container.css('max-height', '');
+            container.off('.bracketPan');
+            detachBracketObservers(container);
             container.data('bracketState', serialized);
             container.data('bracketData', data);
             if (effectiveMode === 'admin') {
@@ -1370,8 +1566,10 @@ $(function () {
             return;
         }
 
+        enableBracketPanning(container);
         enableAdminControls(container, effectiveMode);
 
+        refreshBracketGeometry(container);
         window.requestAnimationFrame(function () {
             refreshBracketGeometry(container);
         });
