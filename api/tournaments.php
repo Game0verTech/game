@@ -18,7 +18,7 @@ switch ($action) {
         $tournament = get_tournament($tournamentId);
         if (!$tournament || $tournament['status'] !== 'open') {
             flash('error', 'Tournament is not open for registration.');
-            redirect('/?page=tournaments');
+            redirect('/?page=dashboard');
         }
         if (is_user_registered($tournamentId, $user['id'])) {
             flash('error', 'You are already registered for this tournament.');

@@ -6,6 +6,7 @@ $headScripts = $headScripts ?? [];
 $deferScripts = $deferScripts ?? [];
 $bodyClass = trim($bodyClass ?? '');
 $mainClass = trim($mainClass ?? 'container');
+$navCurrentPage = $_GET['page'] ?? ($user ? 'dashboard' : 'home');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -36,15 +37,14 @@ $mainClass = trim($mainClass ?? 'container');
     <div class="container">
         <h1 class="logo"><a href="/">Play for Purpose Ohio</a></h1>
         <nav>
-            <a href="/">Home</a>
-            <a href="/?page=tournaments">Tournaments</a>
             <?php if ($user): ?>
-                <a href="/?page=dashboard">Dashboard</a>
+                <a href="/?page=dashboard"<?= $navCurrentPage === 'dashboard' ? ' aria-current="page"' : '' ?>>Dashboard</a>
+                <a href="/?page=calendar"<?= $navCurrentPage === 'calendar' ? ' aria-current="page"' : '' ?>>Calendar</a>
                 <?php if (user_has_role('admin', 'manager')): ?>
-                    <a href="/?page=admin">Admin</a>
+                    <a href="/?page=admin"<?= $navCurrentPage === 'admin' ? ' aria-current="page"' : '' ?>>Admin</a>
                 <?php endif; ?>
                 <?php if (user_has_role('admin')): ?>
-                    <a href="/?page=store">Store</a>
+                    <a href="/?page=store"<?= $navCurrentPage === 'store' ? ' aria-current="page"' : '' ?>>Store</a>
                 <?php endif; ?>
                 <form method="post" action="/api/auth.php" class="logout-form">
                     <input type="hidden" name="action" value="logout">
@@ -52,8 +52,9 @@ $mainClass = trim($mainClass ?? 'container');
                     <button type="submit">Logout (<?= sanitize($user['username']) ?>)</button>
                 </form>
             <?php else: ?>
-                <a href="/?page=login">Login</a>
-                <a href="/?page=register">Register</a>
+                <a href="/?page=home"<?= $navCurrentPage === 'home' ? ' aria-current="page"' : '' ?>>Dashboard</a>
+                <a href="/?page=login"<?= $navCurrentPage === 'login' ? ' aria-current="page"' : '' ?>>Login</a>
+                <a href="/?page=register"<?= $navCurrentPage === 'register' ? ' aria-current="page"' : '' ?>>Register</a>
             <?php endif; ?>
         </nav>
     </div>

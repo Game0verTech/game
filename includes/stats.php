@@ -65,3 +65,21 @@ function recent_results(int $userId, int $limit = 5): array
     $stmt->execute();
     return $stmt->fetchAll();
 }
+
+function count_user_tournament_titles(int $userId): int
+{
+    $tournaments = list_tournaments();
+    $titles = 0;
+
+    foreach ($tournaments as $tournament) {
+        if (($tournament['status'] ?? '') !== 'completed') {
+            continue;
+        }
+        $championId = determine_tournament_champion($tournament);
+        if ($championId !== null && $championId === $userId) {
+            $titles++;
+        }
+    }
+
+    return $titles;
+}

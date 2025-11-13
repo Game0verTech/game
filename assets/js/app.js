@@ -2403,6 +2403,17 @@ $(function () {
         container.data('poller', poller);
     }
 
+    function cleanupBracketPolling(container) {
+        if (!container || !container.length) {
+            return;
+        }
+        var poller = container.data('poller');
+        if (poller) {
+            clearInterval(poller);
+            container.removeData('poller');
+        }
+    }
+
     function applyBracketPayload(container, payload, mode) {
         if (!container || !container.length || !payload) {
             return false;
@@ -2417,6 +2428,141 @@ $(function () {
             return true;
         }
         return false;
+    }
+
+    function resetTournamentViewer(modal) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        modal.removeData('tournamentId');
+        modal.find('.js-viewer-status').removeClass('status-draft status-open status-live status-completed').text('');
+        modal.find('.js-viewer-type').text('');
+        modal.find('.js-viewer-registration').text('');
+        modal.find('.js-viewer-description').attr('hidden', 'hidden').empty();
+        modal.find('.js-viewer-roster').empty();
+        modal.find('.js-viewer-bracket, .js-viewer-groups').each(function () {
+            var container = $(this);
+            cleanupBracketPolling(container);
+            container.removeData('status')
+                .removeData('bracketState')
+                .removeData('groupState')
+                .removeData('tournamentId')
+                .removeData('live');
+            container.removeAttr('data-status data-live data-tournament-id data-bracket data-group');
+            container.empty();
+            container.attr('hidden', 'hidden');
+        });
+    }
+
+    function renderTournamentRoster(modal, tournament) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        var rosterList = modal.find('.js-viewer-roster');
+        if (!rosterList.length) {
+            return;
+        }
+        rosterList.empty();
+        var roster = Array.isArray(tournament.playerRoster) ? tournament.playerRoster : [];
+        if (!roster.length) {
+            rosterList.append($('<li class="muted"></li>').text('No players registered yet.'));
+            return;
+        }
+        roster.forEach(function (player) {
+            var name = '';
+            if (player && typeof player.name === 'string' && player.name.trim() !== '') {
+                name = player.name.trim();
+            } else if (player && player.id) {
+                name = 'Player #' + player.id;
+            } else {
+                name = 'Player';
+            }
+            rosterList.append($('<li></li>').text(name));
+        });
+    }
+
+    function prepareViewerBracket(modal, tournament) {
+        if (!modal || !modal.length || !tournament) {
+            return;
+        }
+        var bracketContainer = modal.find('.js-viewer-bracket');
+        var groupContainer = modal.find('.js-viewer-groups');
+        var tournamentId = parseInt(tournament.id, 10);
+        if (!tournamentId) {
+            return;
+        }
+        var status = (tournament.status || '').toLowerCase();
+        var isLive = status === 'open' || status === 'live';
+
+        if (tournament.type === 'round-robin') {
+            bracketContainer.attr('hidden', 'hidden');
+            groupContainer.removeAttr('hidden');
+            groupContainer.data('mode', 'viewer').attr('data-mode', 'viewer');
+            groupContainer.data('tournamentId', tournamentId).attr('data-tournament-id', tournamentId);
+            groupContainer.data('status', tournament.status || '').attr('data-status', tournament.status || '');
+            if (isLive) {
+                groupContainer.data('live', 1).attr('data-live', '1');
+            } else {
+                groupContainer.removeData('live').removeAttr('data-live');
+            }
+            groupContainer.append($('<p class="muted"></p>').text('Loading groups…'));
+            setupGroupPolling(groupContainer, tournamentId, 'viewer');
+            return;
+        }
+
+        groupContainer.attr('hidden', 'hidden');
+        bracketContainer.removeAttr('hidden');
+        bracketContainer.data('mode', 'viewer').attr('data-mode', 'viewer');
+        bracketContainer.data('tournamentId', tournamentId).attr('data-tournament-id', tournamentId);
+        bracketContainer.data('status', tournament.status || '').attr('data-status', tournament.status || '');
+        if (isLive) {
+            bracketContainer.data('live', 1).attr('data-live', '1');
+        } else {
+            bracketContainer.removeData('live').removeAttr('data-live');
+        }
+        bracketContainer.append($('<p class="muted"></p>').text('Loading bracket…'));
+        setupPolling(bracketContainer, tournamentId, 'viewer');
+    }
+
+    function openTournamentViewerModal(tournamentId, fallbackPayload) {
+        var modal = $('#tournamentViewerModal');
+        if (!modal.length) {
+            return;
+        }
+        var fallback = null;
+        if (fallbackPayload) {
+            fallback = registerTournament(fallbackPayload);
+        }
+        var tournament = tournamentDirectory[tournamentId] || fallback;
+        if (!tournament) {
+            return;
+        }
+        resetTournamentViewer(modal);
+        modal.data('tournamentId', tournamentId);
+        var status = (tournament.status || '').toLowerCase();
+        var statusPill = modal.find('.js-viewer-status');
+        statusPill.removeClass('status-draft status-open status-live status-completed');
+        if (status) {
+            statusPill.addClass('status-' + status);
+            statusPill.text(status.charAt(0).toUpperCase() + status.slice(1));
+        } else {
+            statusPill.text('');
+        }
+        modal.find('.js-viewer-title').text(tournament.name || 'Tournament');
+        modal.find('.js-viewer-schedule').text(formatTournamentSchedule(tournament));
+        modal.find('.js-viewer-type').text(formatTournamentType(tournament.type));
+        var descriptionBlock = modal.find('.js-viewer-description');
+        var description = tournament.description && typeof tournament.description === 'string' ? tournament.description.trim() : '';
+        if (description) {
+            descriptionBlock.html(escapeHtml(description).replace(/\n/g, '<br>'));
+            descriptionBlock.removeAttr('hidden');
+        } else {
+            descriptionBlock.attr('hidden', 'hidden').empty();
+        }
+        modal.find('.js-viewer-registration').text(buildRegistrationMessage(tournament));
+        renderTournamentRoster(modal, tournament);
+        prepareViewerBracket(modal, tournament);
+        openModal(modal);
     }
 
     function markWinner(container, tournamentId, matchId, playerId, token) {
@@ -2608,6 +2754,42 @@ $(function () {
         return date;
     }
 
+    function normalizePlayerRoster(source) {
+        if (!Array.isArray(source)) {
+            return [];
+        }
+        var roster = [];
+        source.forEach(function (entry) {
+            if (entry === null || entry === undefined) {
+                return;
+            }
+            var id = null;
+            var name = '';
+            if (typeof entry === 'object') {
+                if (typeof entry.id !== 'undefined') {
+                    id = entry.id;
+                } else if (typeof entry.user_id !== 'undefined') {
+                    id = entry.user_id;
+                }
+                if (typeof entry.name === 'string' && entry.name.trim() !== '') {
+                    name = entry.name.trim();
+                } else if (typeof entry.username === 'string' && entry.username.trim() !== '') {
+                    name = entry.username.trim();
+                }
+            } else {
+                id = entry;
+            }
+            var parsedId = parseInt(id, 10);
+            if (!Number.isNaN(parsedId) && parsedId > 0) {
+                roster.push({
+                    id: parsedId,
+                    name: name || 'Player #' + parsedId
+                });
+            }
+        });
+        return roster;
+    }
+
     function registerTournament(payload) {
         if (!payload || typeof payload.id === 'undefined') {
             return null;
@@ -2621,13 +2803,70 @@ $(function () {
         var scheduled = copy.scheduled_at || copy.scheduledAt;
         copy.scheduledDate = parseScheduleDate(scheduled);
         copy.location = copy.location || defaultTournamentLocation;
-        copy.players = Array.isArray(copy.players)
-            ? copy.players.map(function (playerId) {
-                return parseInt(playerId, 10);
-            }).filter(function (playerId) {
-                return !Number.isNaN(playerId) && playerId > 0;
-            })
-            : [];
+
+        var rosterSource = payload.player_roster || payload.playerRoster || copy.player_roster || copy.playerRoster;
+        var roster = normalizePlayerRoster(rosterSource);
+        if (!roster.length && payload.players_detail) {
+            roster = normalizePlayerRoster(payload.players_detail);
+        }
+        if (!roster.length && payload.playersDetail) {
+            roster = normalizePlayerRoster(payload.playersDetail);
+        }
+        if (!roster.length) {
+            roster = normalizePlayerRoster(payload.players);
+        }
+
+        var playerIds = [];
+        if (Array.isArray(payload.players)) {
+            payload.players.forEach(function (entry) {
+                var candidate = entry;
+                if (typeof entry === 'object' && entry !== null) {
+                    candidate = typeof entry.id !== 'undefined' ? entry.id : entry.user_id;
+                }
+                var parsed = parseInt(candidate, 10);
+                if (!Number.isNaN(parsed) && parsed > 0) {
+                    playerIds.push(parsed);
+                }
+            });
+        }
+        if (!playerIds.length && roster.length) {
+            playerIds = roster.map(function (member) {
+                return member.id;
+            });
+        }
+        copy.players = playerIds.filter(function (value, index, array) {
+            return array.indexOf(value) === index;
+        });
+
+        if (!roster.length && copy.players.length) {
+            roster = copy.players.map(function (memberId) {
+                return { id: memberId, name: 'Player #' + memberId };
+            });
+        }
+        copy.playerRoster = roster;
+
+        var declaredCount = payload.player_count;
+        if (typeof declaredCount === 'undefined') {
+            declaredCount = payload.playerCount;
+        }
+        if (typeof declaredCount === 'undefined') {
+            declaredCount = copy.player_count;
+        }
+        var parsedCount = parseInt(declaredCount, 10);
+        if (Number.isNaN(parsedCount) || parsedCount < 0) {
+            parsedCount = roster.length || copy.players.length;
+        }
+        copy.playerCount = parsedCount;
+
+        var registrationFlag = payload.is_registered;
+        if (typeof registrationFlag === 'undefined') {
+            registrationFlag = payload.registered;
+        }
+        if (typeof registrationFlag === 'undefined') {
+            registrationFlag = copy.is_registered;
+        }
+        copy.isRegistered = Boolean(registrationFlag);
+
         tournamentDirectory[id] = copy;
         return copy;
     }
@@ -2664,6 +2903,38 @@ $(function () {
         var schedule = formatDateTime(tournament.scheduledDate);
         var location = tournament.location || defaultTournamentLocation;
         return schedule + ' • ' + location;
+    }
+
+    function formatTournamentType(type) {
+        if (!type || typeof type !== 'string') {
+            return '';
+        }
+        return type.split(/[-_\s]+/).map(function (part) {
+            if (!part) {
+                return '';
+            }
+            return part.charAt(0).toUpperCase() + part.slice(1);
+        }).join(' ').trim();
+    }
+
+    function buildRegistrationMessage(tournament) {
+        if (!tournament) {
+            return '';
+        }
+        var status = (tournament.status || '').toLowerCase();
+        if (status === 'draft') {
+            return tournament.isRegistered ? 'You will be notified when registration opens.' : 'Registration opens soon.';
+        }
+        if (status === 'open') {
+            return tournament.isRegistered ? 'You are registered for this event.' : 'Registration is open now.';
+        }
+        if (status === 'live') {
+            return tournament.isRegistered ? 'Tournament is live. Check the bracket for updates.' : 'Tournament is currently live.';
+        }
+        if (status === 'completed') {
+            return 'Tournament completed.';
+        }
+        return 'Tournament status: ' + (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'TBD');
     }
 
     function toDateInputValue(date) {
@@ -2724,6 +2995,9 @@ $(function () {
             }
         }
         modal.removeData('trigger');
+        if (modal.hasClass('js-tournament-viewer')) {
+            resetTournamentViewer(modal);
+        }
         if (activeModal && modal[0] === activeModal[0]) {
             activeModal = null;
         }
@@ -2971,6 +3245,11 @@ $(function () {
         calendarContainer.on('click', '.calendar-event', function (event) {
             event.preventDefault();
             var tournamentId = $(this).data('tournamentId');
+            var viewerModal = $('#tournamentViewerModal');
+            if (viewerModal.length) {
+                openTournamentViewerModal(parseInt(tournamentId, 10));
+                return;
+            }
             openActionsModal(tournamentId);
         });
     }
@@ -2987,6 +3266,25 @@ $(function () {
         modal.find('.js-open-tournament').attr('href', '/?page=admin&t=view&id=' + tournamentId);
         openModal(modal);
     }
+
+    $(document).on('click', '[data-view-bracket]', function (event) {
+        event.preventDefault();
+        var source = $(this);
+        var payload = parseJsonPayload(source, 'tournament');
+        if (!payload) {
+            var container = source.closest('[data-tournament]');
+            if (container.length) {
+                payload = parseJsonPayload(container, 'tournament');
+            }
+        }
+        var tournamentId = payload && typeof payload.id !== 'undefined'
+            ? parseInt(payload.id, 10)
+            : parseInt(source.data('tournamentId'), 10);
+        if (!tournamentId) {
+            return;
+        }
+        openTournamentViewerModal(tournamentId, payload || null);
+    });
 
     $(document).on('click', '[data-modal-trigger]', function (event) {
         var targetId = $(this).data('modalTrigger');
