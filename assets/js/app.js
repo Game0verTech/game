@@ -583,6 +583,8 @@ $(function () {
         container.data('groupData', state);
         container.data('groupState', JSON.stringify(state || {}));
 
+        ensureZoomControls(container);
+
         if (effectiveMode === 'admin') {
             updateMatchSummary(container, state);
         }
