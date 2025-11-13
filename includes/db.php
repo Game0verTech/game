@@ -10,6 +10,7 @@ function db(): PDO
     }
 
     $config = load_config();
+    $timezone = configured_timezone($config);
     if (empty($config['db'])) {
         throw new RuntimeException('Database configuration missing.');
     }
@@ -25,6 +26,20 @@ function db(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
+
+    // Ensure MySQL uses the same timezone as PHP so time-based comparisons remain consistent.
+    // Using the named timezone allows MySQL to account for daylight saving time automatically.
+    try {
+        $pdo->exec('SET time_zone = ' . $pdo->quote($timezone));
+    } catch (PDOException $e) {
+        error_log('Failed to set database time zone using identifier: ' . $e->getMessage());
+        try {
+            $offset = (new DateTimeImmutable('now', new DateTimeZone($timezone)))->format('P');
+            $pdo->exec('SET time_zone = ' . $pdo->quote($offset));
+        } catch (Throwable $fallbackException) {
+            error_log('Failed to set database time zone offset: ' . $fallbackException->getMessage());
+        }
+    }
 
     return $pdo;
 }
