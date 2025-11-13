@@ -1382,6 +1382,13 @@ $(function () {
                 if (response && response.status) {
                     container.data('status', response.status);
                     container.attr('data-status', response.status);
+                    if (response.status === 'completed') {
+                        var activePoller = container.data('poller');
+                        if (activePoller) {
+                            clearInterval(activePoller);
+                            container.removeData('poller');
+                        }
+                    }
                 }
                 if (!response || !response.bracket) {
                     return;
@@ -1401,6 +1408,13 @@ $(function () {
 
     function shouldPoll(container, mode) {
         if (mode === 'admin') {
+            return true;
+        }
+        var status = container.data('status');
+        if (!status && container.length) {
+            status = container.attr('data-status');
+        }
+        if (status && status !== 'completed') {
             return true;
         }
         var liveAttr = container.data('live');

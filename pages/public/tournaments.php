@@ -72,7 +72,8 @@ $user = current_user();
                         data-bracket='<?= sanitize($liveBracket) ?>'
                         data-mode="user"
                         data-tournament-id="<?= (int)$tournament['id'] ?>"
-                        data-live="1"
+                        data-status="<?= sanitize($tournament['status']) ?>"
+                        <?= in_array($tournament['status'], ['open', 'live'], true) ? 'data-live="1"' : '' ?>
                     ></div>
                 <?php else: ?>
                     <p>Bracket not yet available.</p>

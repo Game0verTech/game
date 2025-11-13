@@ -88,7 +88,8 @@ $openTournaments = list_tournaments('open');
                         data-bracket='<?= sanitize($userBracket) ?>'
                         data-mode="user"
                         data-tournament-id="<?= (int)$tournament['id'] ?>"
-                        <?= in_array($tournament['status'], ['live'], true) ? 'data-live="1"' : '' ?>
+                        data-status="<?= sanitize($tournament['status']) ?>"
+                        <?= in_array($tournament['status'], ['open', 'live'], true) ? 'data-live="1"' : '' ?>
                     ></div>
                 <?php else: ?>
                     <p>Bracket not generated yet.</p>

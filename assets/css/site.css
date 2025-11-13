@@ -1176,6 +1176,7 @@ button.danger:focus-visible,
     column-gap: clamp(64px, 6vw, 132px);
     row-gap: clamp(32px, 4vw, 64px);
     align-items: start;
+    align-content: start;
     padding-bottom: clamp(48px, 5vw, 72px);
 }
 

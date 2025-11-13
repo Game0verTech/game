@@ -78,7 +78,8 @@ if (!$groupData && $tournament['type'] === 'round-robin' && $tournament['status'
                 data-bracket='<?= sanitize($bracketData) ?>'
                 data-mode="user"
                 data-tournament-id="<?= (int)$tournament['id'] ?>"
-                <?= $tournament['status'] === 'live' ? 'data-live="1"' : '' ?>
+                data-status="<?= sanitize($tournament['status']) ?>"
+                <?= in_array($tournament['status'], ['open', 'live'], true) ? 'data-live="1"' : '' ?>
             ></div>
         <?php else: ?>
             <p class="muted">The bracket will be displayed after the tournament starts.</p>
