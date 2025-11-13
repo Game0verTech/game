@@ -108,7 +108,7 @@ switch ($action) {
         $id = (int)($_POST['tournament_id'] ?? 0);
         update_tournament_status($id, 'open');
         flash('success', 'Tournament opened for registration.');
-        redirect('/?page=admin&t=manage&id=' . $id);
+        redirect('/?page=admin&t=view&id=' . $id);
 
     case 'start':
         require_role('admin', 'manager');
@@ -127,14 +127,14 @@ switch ($action) {
         }
         update_tournament_status($id, 'live');
         flash('success', 'Tournament started.');
-        redirect('/?page=admin&t=manage&id=' . $id);
+        redirect('/?page=admin&t=view&id=' . $id);
 
     case 'complete':
         require_role('admin', 'manager');
         $id = (int)($_POST['tournament_id'] ?? 0);
         update_tournament_status($id, 'completed');
         flash('success', 'Tournament completed.');
-        redirect('/?page=admin&t=manage&id=' . $id);
+        redirect('/?page=admin&t=view&id=' . $id);
 
     case 'add_player_admin':
         require_role('admin', 'manager');

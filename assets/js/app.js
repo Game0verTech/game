@@ -762,6 +762,8 @@ $(function () {
                     }
                     var top = null;
                     var sourceCenters = [];
+                    var currentStage = matchEl.attr('data-stage') || stageKey;
+                    var alignWithinStageOnly = currentStage === 'losers';
                     matchEl.find('.team').each(function () {
                         var teamEl = $(this);
                         var sourceStage = teamEl.attr('data-source-stage');
@@ -769,6 +771,9 @@ $(function () {
                         var sourceMatch = parseInt(teamEl.attr('data-source-match-index'), 10);
                         if (!sourceStage || Number.isNaN(sourceRound) || Number.isNaN(sourceMatch)) {
                             return;
+                        }
+                        if (alignWithinStageOnly && sourceStage !== currentStage) {
+                            return true;
                         }
                         var key = sourceStage + ':' + sourceRound + ':' + sourceMatch;
                         if (centerMap[key] !== undefined) {
