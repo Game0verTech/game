@@ -37,6 +37,7 @@
     const changeContainer = document.getElementById('store-change-due-container');
     const reportsItemsBody = document.getElementById('store-reports-items-body');
     const reportsTransactionsBody = document.getElementById('store-reports-transactions-body');
+    let setActiveReportTab = () => {};
 
     const state = {
         terminalKey: ensureTerminalKey(),
@@ -350,6 +351,81 @@
         return date.toLocaleString();
     }
 
+    function formatReportDate(value) {
+        if (!value) {
+            return '';
+        }
+        const date = new Date(`${value}T00:00:00`);
+        if (Number.isNaN(date.getTime())) {
+            return '';
+        }
+        return date.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+    }
+
+    function printReportPanel(panel) {
+        if (!panel) {
+            return;
+        }
+        const titleEl = panel.querySelector('.report-card__title');
+        const subtitleEl = panel.querySelector('.report-card__subtitle');
+        const title = titleEl ? titleEl.textContent.trim() : 'Store Report';
+        const subtitle = subtitleEl ? subtitleEl.textContent.trim() : '';
+        const dateValue = reportDateInput ? reportDateInput.value : '';
+        const reportDateText = formatReportDate(dateValue);
+        const generatedAt = new Date();
+
+        const clone = panel.cloneNode(true);
+        clone.querySelectorAll('[data-report-print]').forEach((btn) => btn.remove());
+        const body = clone.querySelector('.report-card__body');
+        const bodyHtml = body ? body.innerHTML : clone.innerHTML;
+
+        const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+        if (!printWindow) {
+            showToast('Please allow pop-ups to print reports.');
+            return;
+        }
+
+        const styles = `:root { color-scheme: light; font-family: 'Inter', 'Segoe UI', sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 48px; background: #eef3fb; color: #021026; font-family: 'Inter', 'Segoe UI', sans-serif; }
+.print-shell { max-width: 1080px; margin: 0 auto; background: #ffffff; border-radius: 20px; border: 1px solid #dbe7fb; box-shadow: 0 24px 60px rgba(2, 16, 38, 0.08); padding: 48px 56px; }
+.print-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; margin-bottom: 32px; }
+.print-header h1 { margin: 0; font-size: 28px; letter-spacing: 0.015em; }
+.print-header p { margin: 8px 0 0; color: #4b5b76; font-size: 15px; }
+.print-meta { display: flex; flex-direction: column; gap: 12px; text-align: right; font-size: 14px; color: #4b5b76; }
+.print-meta__item { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.print-meta__label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #4b5b76; }
+.print-meta__value { font-weight: 600; color: #021026; }
+.print-body { display: flex; flex-direction: column; gap: 28px; }
+.reports-summary { background: #f6f9ff; border: 1px solid #dbe7fb; border-radius: 18px; padding: 24px 28px; display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.reports-summary .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #4b5b76; }
+.reports-summary .value { font-size: 24px; font-weight: 700; color: #021026; }
+.reports-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.reports-table thead th { background: #e7f1ff; }
+.reports-table th, .reports-table td { padding: 14px 16px; border-bottom: 1px solid #dbe7fb; text-align: left; vertical-align: top; color: #021026; }
+.reports-table tr:last-child td { border-bottom: none; }
+.reports-table--transactions ul { margin: 0; padding-left: 18px; }
+.reports-table--transactions li { margin-bottom: 6px; color: #021026; }`;
+
+        const metaSections = [];
+        if (reportDateText) {
+            metaSections.push(`<div class="print-meta__item"><span class="print-meta__label">Reporting Date</span><span class="print-meta__value">${reportDateText}</span></div>`);
+        }
+        metaSections.push(`<div class="print-meta__item"><span class="print-meta__label">Generated</span><span class="print-meta__value">${generatedAt.toLocaleString()}</span></div>`);
+
+        printWindow.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${title} – Store Reports</title><style>${styles}</style></head><body><div class="print-shell"><div class="print-header"><div><h1>${title}</h1>${subtitle ? `<p>${subtitle}</p>` : ''}</div><div class="print-meta">${metaSections.join('')}</div></div><div class="print-body">${bodyHtml}</div></div></body></html>`);
+        printWindow.document.close();
+        printWindow.addEventListener('load', () => {
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+        });
+    }
+
     function renderRecent() {
         recentList.innerHTML = '';
         if (!state.recent.length) {
@@ -418,6 +494,7 @@
                 reportDateInput.value = new Date().toISOString().split('T')[0];
             }
             fetchReports();
+            setActiveReportTab('session');
             openModalElement(reportsModal);
         });
     }
@@ -505,10 +582,72 @@
         });
 
         document.getElementById('store-refresh-reports').addEventListener('click', fetchReports);
-        document.getElementById('store-print-reports').addEventListener('click', () => window.print());
         if (tenderInput) {
             tenderInput.addEventListener('input', updateChangeDue);
         }
+    }
+
+    function setupReportsInterface() {
+        const tabs = Array.from(document.querySelectorAll('[data-report-tab]'));
+        const panels = Array.from(document.querySelectorAll('[data-report-panel]'));
+        if (!tabs.length || !panels.length) {
+            return;
+        }
+
+        const activateTab = (key) => {
+            if (!key) {
+                return;
+            }
+            tabs.forEach((tab) => {
+                const isActive = tab.dataset.reportTab === key;
+                tab.classList.toggle('is-active', isActive);
+                tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                tab.setAttribute('tabindex', isActive ? '0' : '-1');
+            });
+            panels.forEach((panel) => {
+                const isActive = panel.dataset.reportPanel === key;
+                panel.classList.toggle('is-active', isActive);
+                if (isActive) {
+                    panel.removeAttribute('hidden');
+                } else {
+                    panel.setAttribute('hidden', 'hidden');
+                }
+            });
+        };
+
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => {
+                activateTab(tab.dataset.reportTab);
+            });
+            tab.addEventListener('keydown', (event) => {
+                if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') {
+                    return;
+                }
+                event.preventDefault();
+                const direction = event.key === 'ArrowRight' ? 1 : -1;
+                let nextIndex = (index + direction + tabs.length) % tabs.length;
+                const nextTab = tabs[nextIndex];
+                if (nextTab) {
+                    activateTab(nextTab.dataset.reportTab);
+                    nextTab.focus();
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-report-print]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const panel = button.closest('[data-report-panel]');
+                if (panel) {
+                    printReportPanel(panel);
+                }
+            });
+        });
+
+        if (tabs[0]) {
+            activateTab(tabs[0].dataset.reportTab);
+        }
+
+        setActiveReportTab = activateTab;
     }
 
     function addProductForm(product) {
@@ -776,6 +915,7 @@
         }
     }
 
+    setupReportsInterface();
     bindModalCloseButtons();
     setupToolbar();
     setupForms();

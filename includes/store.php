@@ -1,5 +1,25 @@
 <?php
 
+function store_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    $stmt = $pdo->prepare('SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column');
+    $stmt->execute([
+        ':table' => $table,
+        ':column' => $column,
+    ]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function store_index_exists(PDO $pdo, string $table, string $index): bool
+{
+    $stmt = $pdo->prepare('SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND INDEX_NAME = :index');
+    $stmt->execute([
+        ':table' => $table,
+        ':index' => $index,
+    ]);
+    return (bool)$stmt->fetchColumn();
+}
+
 function ensure_store_schema(): void
 {
     static $ensured = false;
@@ -40,28 +60,43 @@ function ensure_store_schema(): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
 
     // Ensure schema upgrades for existing installations
-    $columnCheck = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'store_sessions' AND COLUMN_NAME = 'open_lock'");
-    $columnCheck->execute();
-    if (!$columnCheck->fetchColumn()) {
+    if (!store_column_exists($pdo, 'store_products', 'cost')) {
+        $pdo->exec("ALTER TABLE store_products ADD COLUMN cost DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER name");
+    }
+    if (!store_column_exists($pdo, 'store_products', 'price')) {
+        $pdo->exec("ALTER TABLE store_products ADD COLUMN price DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER cost");
+    }
+    if (!store_column_exists($pdo, 'store_products', 'image_path')) {
+        $pdo->exec("ALTER TABLE store_products ADD COLUMN image_path VARCHAR(255) DEFAULT NULL AFTER price");
+    }
+
+    if (!store_column_exists($pdo, 'store_sessions', 'open_lock')) {
         $pdo->exec("ALTER TABLE store_sessions ADD COLUMN open_lock VARCHAR(64) DEFAULT NULL AFTER is_open");
     }
-
-    $indexCheck = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'store_sessions' AND INDEX_NAME = 'uq_store_sessions_open_lock'");
-    $indexCheck->execute();
-    if (!$indexCheck->fetchColumn()) {
+    if (!store_index_exists($pdo, 'store_sessions', 'uq_store_sessions_open_lock')) {
         $pdo->exec('CREATE UNIQUE INDEX uq_store_sessions_open_lock ON store_sessions (open_lock)');
     }
-
-    $terminalIndex = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'store_sessions' AND INDEX_NAME = 'idx_store_sessions_terminal'");
-    $terminalIndex->execute();
-    if (!$terminalIndex->fetchColumn()) {
+    if (!store_index_exists($pdo, 'store_sessions', 'idx_store_sessions_terminal')) {
         $pdo->exec('CREATE INDEX idx_store_sessions_terminal ON store_sessions (terminal_key)');
     }
-
-    $legacyIndex = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'store_sessions' AND INDEX_NAME = 'uq_store_sessions_terminal_open'");
-    $legacyIndex->execute();
-    if ($legacyIndex->fetchColumn()) {
+    if (store_index_exists($pdo, 'store_sessions', 'uq_store_sessions_terminal_open')) {
         $pdo->exec('ALTER TABLE store_sessions DROP INDEX uq_store_sessions_terminal_open');
+    }
+    if (!store_column_exists($pdo, 'store_sessions', 'terminal_key')) {
+        $pdo->exec("ALTER TABLE store_sessions ADD COLUMN terminal_key VARCHAR(64) NOT NULL DEFAULT 'global' AFTER id");
+        $pdo->exec("UPDATE store_sessions SET terminal_key = 'global' WHERE terminal_key = '' OR terminal_key IS NULL");
+    }
+    if (!store_column_exists($pdo, 'store_sessions', 'starting_cash')) {
+        $pdo->exec("ALTER TABLE store_sessions ADD COLUMN starting_cash DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER opened_at");
+    }
+    if (!store_column_exists($pdo, 'store_sessions', 'closing_cash')) {
+        $pdo->exec("ALTER TABLE store_sessions ADD COLUMN closing_cash DECIMAL(10,2) DEFAULT NULL AFTER starting_cash");
+    }
+    if (!store_column_exists($pdo, 'store_sessions', 'closed_at')) {
+        $pdo->exec("ALTER TABLE store_sessions ADD COLUMN closed_at DATETIME DEFAULT NULL AFTER closing_cash");
+    }
+    if (!store_column_exists($pdo, 'store_sessions', 'closed_by')) {
+        $pdo->exec("ALTER TABLE store_sessions ADD COLUMN closed_by INT DEFAULT NULL AFTER closed_at");
     }
 
     $pdo->exec('CREATE TABLE IF NOT EXISTS store_transactions (
@@ -76,6 +111,20 @@ function ensure_store_schema(): void
         INDEX idx_store_transactions_created_at (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
 
+    if (!store_column_exists($pdo, 'store_transactions', 'terminal_key')) {
+        $pdo->exec("ALTER TABLE store_transactions ADD COLUMN terminal_key VARCHAR(64) NOT NULL DEFAULT 'global' AFTER session_id");
+        $pdo->exec("UPDATE store_transactions SET terminal_key = 'global' WHERE terminal_key = '' OR terminal_key IS NULL");
+    }
+    if (!store_column_exists($pdo, 'store_transactions', 'total')) {
+        $pdo->exec("ALTER TABLE store_transactions ADD COLUMN total DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER created_by");
+    }
+    if (!store_column_exists($pdo, 'store_transactions', 'created_at')) {
+        $pdo->exec("ALTER TABLE store_transactions ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER total");
+    }
+    if (!store_index_exists($pdo, 'store_transactions', 'idx_store_transactions_created_at')) {
+        $pdo->exec('CREATE INDEX idx_store_transactions_created_at ON store_transactions (created_at)');
+    }
+
     $pdo->exec('CREATE TABLE IF NOT EXISTS store_transaction_items (
         id INT AUTO_INCREMENT PRIMARY KEY,
         transaction_id INT NOT NULL,
@@ -89,6 +138,22 @@ function ensure_store_schema(): void
         CONSTRAINT fk_store_items_product FOREIGN KEY (product_id) REFERENCES store_products(id) ON DELETE SET NULL,
         INDEX idx_store_items_transaction (transaction_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+
+    if (!store_column_exists($pdo, 'store_transaction_items', 'product_id')) {
+        $pdo->exec('ALTER TABLE store_transaction_items ADD COLUMN product_id INT DEFAULT NULL AFTER transaction_id');
+    }
+    if (!store_column_exists($pdo, 'store_transaction_items', 'product_price')) {
+        $pdo->exec('ALTER TABLE store_transaction_items ADD COLUMN product_price DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER product_name');
+    }
+    if (!store_column_exists($pdo, 'store_transaction_items', 'product_cost')) {
+        $pdo->exec('ALTER TABLE store_transaction_items ADD COLUMN product_cost DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER product_price');
+    }
+    if (!store_column_exists($pdo, 'store_transaction_items', 'line_total')) {
+        $pdo->exec('ALTER TABLE store_transaction_items ADD COLUMN line_total DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER quantity');
+    }
+    if (!store_index_exists($pdo, 'store_transaction_items', 'idx_store_items_transaction')) {
+        $pdo->exec('CREATE INDEX idx_store_items_transaction ON store_transaction_items (transaction_id)');
+    }
 }
 
 function store_currency_to_decimal(string $value): string

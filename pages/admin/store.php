@@ -188,105 +188,124 @@ require __DIR__ . '/../../templates/header.php';
                     <input type="date" id="store-report-date">
                 </label>
                 <button type="button" class="ghost" id="store-refresh-reports">Refresh</button>
-                <button type="button" class="primary" id="store-print-reports">Print / Save PDF</button>
             </div>
         </header>
         <section class="reports-content" id="store-reports-content">
-            <div class="reports-summary">
-                <div>
-                    <span class="label">Sessions</span>
-                    <span class="value" data-summary="sessions">0</span>
-                </div>
-                <div>
-                    <span class="label">Transactions</span>
-                    <span class="value" data-summary="transactions">0</span>
-                </div>
-                <div>
-                    <span class="label">Revenue</span>
-                    <span class="value" data-summary="revenue">$0.00</span>
-                </div>
-                <div>
-                    <span class="label">Costs</span>
-                    <span class="value" data-summary="costs">$0.00</span>
-                </div>
-                <div>
-                    <span class="label">Profit</span>
-                    <span class="value" data-summary="profit">$0.00</span>
-                </div>
-            </div>
-            <div class="reports-sections">
-                <article class="report-card">
+            <nav class="reports-tabs" role="tablist" aria-label="Store reports">
+                <button type="button" class="reports-tab is-active" role="tab" aria-selected="true" aria-controls="report-session" id="report-tab-session" data-report-tab="session">Session Performance</button>
+                <button type="button" class="reports-tab" role="tab" aria-selected="false" aria-controls="report-items" id="report-tab-items" data-report-tab="items">Itemized Sales</button>
+                <button type="button" class="reports-tab" role="tab" aria-selected="false" aria-controls="report-transactions" id="report-tab-transactions" data-report-tab="transactions">Transaction Register</button>
+            </nav>
+            <div class="reports-panels">
+                <article class="report-card is-active" id="report-session" role="tabpanel" aria-labelledby="report-tab-session" data-report-panel="session">
                     <header class="report-card__header">
-                        <h3 class="report-card__title">Session Performance</h3>
-                        <p class="report-card__subtitle">Overview of each register session that opened on the selected date.</p>
+                        <div class="report-card__intro">
+                            <h3 class="report-card__title">Session Performance</h3>
+                            <p class="report-card__subtitle">Overview of each register session that opened on the selected date.</p>
+                        </div>
+                        <button type="button" class="ghost report-card__print" data-report-print>Print Report</button>
                     </header>
-                    <div class="reports-table-wrapper">
-                        <table class="reports-table">
-                            <thead>
-                                <tr>
-                                    <th>Session</th>
-                                    <th>Terminal</th>
-                                    <th>Opened By</th>
-                                    <th>Opened</th>
-                                    <th>Closed By</th>
-                                    <th>Closed</th>
-                                    <th>Starting Cash</th>
-                                    <th>Closing Cash</th>
-                                    <th>Transactions</th>
-                                    <th>Sales</th>
-                                </tr>
-                            </thead>
-                            <tbody id="store-reports-body">
-                                <tr><td colspan="10">No data for the selected date.</td></tr>
-                            </tbody>
-                        </table>
+                    <div class="report-card__body">
+                        <div class="reports-summary">
+                            <div>
+                                <span class="label">Sessions</span>
+                                <span class="value" data-summary="sessions">0</span>
+                            </div>
+                            <div>
+                                <span class="label">Transactions</span>
+                                <span class="value" data-summary="transactions">0</span>
+                            </div>
+                            <div>
+                                <span class="label">Revenue</span>
+                                <span class="value" data-summary="revenue">$0.00</span>
+                            </div>
+                            <div>
+                                <span class="label">Costs</span>
+                                <span class="value" data-summary="costs">$0.00</span>
+                            </div>
+                            <div>
+                                <span class="label">Profit</span>
+                                <span class="value" data-summary="profit">$0.00</span>
+                            </div>
+                        </div>
+                        <div class="reports-table-wrapper">
+                            <table class="reports-table">
+                                <thead>
+                                    <tr>
+                                        <th>Session</th>
+                                        <th>Terminal</th>
+                                        <th>Opened By</th>
+                                        <th>Opened</th>
+                                        <th>Closed By</th>
+                                        <th>Closed</th>
+                                        <th>Starting Cash</th>
+                                        <th>Closing Cash</th>
+                                        <th>Transactions</th>
+                                        <th>Sales</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="store-reports-body">
+                                    <tr><td colspan="10">No data for the selected date.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </article>
-                <article class="report-card">
+                <article class="report-card" id="report-items" role="tabpanel" aria-labelledby="report-tab-items" data-report-panel="items" hidden>
                     <header class="report-card__header">
-                        <h3 class="report-card__title">Itemized Sales</h3>
-                        <p class="report-card__subtitle">Product-level performance across every session for the day.</p>
+                        <div class="report-card__intro">
+                            <h3 class="report-card__title">Itemized Sales</h3>
+                            <p class="report-card__subtitle">Product-level performance across every session for the day.</p>
+                        </div>
+                        <button type="button" class="ghost report-card__print" data-report-print>Print Report</button>
                     </header>
-                    <div class="reports-table-wrapper">
-                        <table class="reports-table">
-                            <thead>
-                                <tr>
-                                    <th>Product</th>
-                                    <th>Quantity Sold</th>
-                                    <th>Gross Sales</th>
-                                    <th>Cost</th>
-                                    <th>Profit</th>
-                                </tr>
-                            </thead>
-                            <tbody id="store-reports-items-body">
-                                <tr><td colspan="5">No sales recorded for the selected date.</td></tr>
-                            </tbody>
-                        </table>
+                    <div class="report-card__body">
+                        <div class="reports-table-wrapper">
+                            <table class="reports-table">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Quantity Sold</th>
+                                        <th>Gross Sales</th>
+                                        <th>Cost</th>
+                                        <th>Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="store-reports-items-body">
+                                    <tr><td colspan="5">No sales recorded for the selected date.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </article>
-                <article class="report-card">
+                <article class="report-card" id="report-transactions" role="tabpanel" aria-labelledby="report-tab-transactions" data-report-panel="transactions" hidden>
                     <header class="report-card__header">
-                        <h3 class="report-card__title">Transaction Register</h3>
-                        <p class="report-card__subtitle">Detailed receipt log with cashier attribution and line items.</p>
+                        <div class="report-card__intro">
+                            <h3 class="report-card__title">Transaction Register</h3>
+                            <p class="report-card__subtitle">Detailed receipt log with cashier attribution and line items.</p>
+                        </div>
+                        <button type="button" class="ghost report-card__print" data-report-print>Print Report</button>
                     </header>
-                    <div class="reports-table-wrapper">
-                        <table class="reports-table reports-table--transactions">
-                            <thead>
-                                <tr>
-                                    <th>Receipt #</th>
-                                    <th>Session</th>
-                                    <th>Terminal</th>
-                                    <th>Cashier</th>
-                                    <th>Timestamp</th>
-                                    <th>Items</th>
-                                    <th>Total</th>
-                                    <th>Line Items</th>
-                                </tr>
-                            </thead>
-                            <tbody id="store-reports-transactions-body">
-                                <tr><td colspan="8">No transactions recorded for the selected date.</td></tr>
-                            </tbody>
-                        </table>
+                    <div class="report-card__body">
+                        <div class="reports-table-wrapper">
+                            <table class="reports-table reports-table--transactions">
+                                <thead>
+                                    <tr>
+                                        <th>Receipt #</th>
+                                        <th>Session</th>
+                                        <th>Terminal</th>
+                                        <th>Cashier</th>
+                                        <th>Timestamp</th>
+                                        <th>Items</th>
+                                        <th>Total</th>
+                                        <th>Line Items</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="store-reports-transactions-body">
+                                    <tr><td colspan="8">No transactions recorded for the selected date.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </article>
             </div>

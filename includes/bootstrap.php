@@ -20,6 +20,7 @@ require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/users.php';
 require_once __DIR__ . '/tournaments.php';
 require_once __DIR__ . '/stats.php';
+require_once __DIR__ . '/store.php';
 
 if (!env_config_exists() || !install_is_locked()) {
     $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -32,5 +33,5 @@ if (!env_config_exists() || !install_is_locked()) {
 if (env_config_exists() && install_is_locked()) {
     ensure_user_role_enum();
     ensure_user_ban_column();
-    ensure_user_email_verification_table();
+    ensure_store_schema();
 }
