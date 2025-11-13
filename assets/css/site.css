@@ -624,7 +624,7 @@ body.modal-open {
     display: none;
     align-items: center;
     justify-content: center;
-    padding: clamp(16px, 5vw, 60px);
+    padding: clamp(12px, 4vw, 48px);
     z-index: 999;
 }
 
@@ -639,7 +639,7 @@ body.modal-open {
     padding: clamp(24px, 4vw, 36px);
     position: relative;
     box-shadow: 0 28px 80px rgba(4, 10, 22, 0.6);
-    max-height: 90vh;
+    max-height: min(92vh, 960px);
     overflow-y: auto;
 }
 
@@ -652,8 +652,9 @@ body.modal-open {
 }
 
 .modal--fullscreen {
-    width: min(100%, 1040px);
-    max-height: 92vh;
+    width: min(96vw, 1400px);
+    height: min(96vh, 940px);
+    max-height: none;
     display: flex;
     flex-direction: column;
 }
@@ -661,6 +662,7 @@ body.modal-open {
 .modal--fullscreen .modal__body {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;
 }
 
 .tournament-viewer {
@@ -724,7 +726,7 @@ body.modal-open {
 
 .viewer-bracket,
 .viewer-groups {
-    min-height: 360px;
+    min-height: 420px;
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(6, 12, 22, 0.6);
@@ -792,6 +794,18 @@ body.modal-open {
     flex-wrap: wrap;
     gap: 12px;
     margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+    .modal-overlay {
+        padding: 0;
+    }
+
+    .modal--fullscreen {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+    }
 }
 
 .tournament-calendar-card__header {
