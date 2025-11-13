@@ -81,3 +81,58 @@ CREATE TABLE IF NOT EXISTS snapshots (
     CONSTRAINT fk_snapshots_tournament FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
     CONSTRAINT fk_snapshots_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS store_products (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    cost DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    image_path VARCHAR(255) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_store_products_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS store_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    terminal_key VARCHAR(64) NOT NULL,
+    opened_by INT NOT NULL,
+    opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    starting_cash DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    closing_cash DECIMAL(10,2) DEFAULT NULL,
+    closed_at DATETIME DEFAULT NULL,
+    closed_by INT DEFAULT NULL,
+    is_open TINYINT(1) NOT NULL DEFAULT 1,
+    open_lock VARCHAR(64) DEFAULT NULL,
+    CONSTRAINT fk_store_sessions_opened_by FOREIGN KEY (opened_by) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_store_sessions_closed_by FOREIGN KEY (closed_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY uq_store_sessions_open_lock (open_lock),
+    INDEX idx_store_sessions_terminal (terminal_key),
+    INDEX idx_store_sessions_opened_at (opened_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS store_transactions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    terminal_key VARCHAR(64) NOT NULL,
+    created_by INT NOT NULL,
+    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_store_transactions_session FOREIGN KEY (session_id) REFERENCES store_sessions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_store_transactions_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_store_transactions_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS store_transaction_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    transaction_id INT NOT NULL,
+    product_id INT DEFAULT NULL,
+    product_name VARCHAR(150) NOT NULL,
+    product_price DECIMAL(10,2) NOT NULL,
+    product_cost DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    quantity INT NOT NULL DEFAULT 1,
+    line_total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    CONSTRAINT fk_store_items_transaction FOREIGN KEY (transaction_id) REFERENCES store_transactions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_store_items_product FOREIGN KEY (product_id) REFERENCES store_products(id) ON DELETE SET NULL,
+    INDEX idx_store_items_transaction (transaction_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
