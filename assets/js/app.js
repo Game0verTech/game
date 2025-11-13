@@ -719,7 +719,7 @@ $(function () {
         var isDouble = format === 'double';
         var stageNodes = columns.find('.bracket-stage');
         var stageElements = stageNodes.length ? stageNodes.toArray() : [columns[0]];
-        var baseSpacing = 32;
+        var baseSpacing = 24;
         var centerMap = {};
         var overallMaxHeight = 0;
         var stageTotals = {};

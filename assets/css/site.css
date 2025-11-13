@@ -1160,11 +1160,12 @@ button.danger:focus-visible,
     transform: scale(var(--bracket-zoom));
 }
 
+
 .bracket-columns {
     position: relative;
     display: flex;
-    gap: clamp(84px, 7vw, 168px);
-    padding: 8px clamp(16px, 4vw, 48px) clamp(52px, 5vw, 72px) 0;
+    gap: clamp(64px, 6vw, 132px);
+    padding: 8px clamp(16px, 4vw, 48px) clamp(40px, 4.5vw, 64px) 0;
     min-width: max-content;
     z-index: 1;
 }
@@ -1172,17 +1173,50 @@ button.danger:focus-visible,
 .bracket-container[data-format="double"] .bracket-columns {
     display: grid;
     grid-template-columns: minmax(0, max-content) minmax(260px, max-content);
-    column-gap: clamp(84px, 7vw, 168px);
-    row-gap: clamp(72px, 7vw, 140px);
+    column-gap: clamp(64px, 6vw, 132px);
+    row-gap: clamp(32px, 4vw, 64px);
     align-items: start;
-    padding-bottom: clamp(68px, 6vw, 104px);
+    padding-bottom: clamp(48px, 5vw, 72px);
 }
 
 .bracket-stage {
+    --stage-accent: rgba(143, 184, 255, 0.72);
+    --stage-accent-soft: rgba(30, 144, 255, 0.24);
+    --stage-match-bg: linear-gradient(145deg, rgba(14, 24, 40, 0.96), rgba(10, 18, 32, 0.92));
+    --stage-team-bg: rgba(20, 32, 52, 0.92);
+    --stage-team-border: rgba(30, 144, 255, 0.18);
+    --stage-score-color: rgba(172, 198, 240, 0.92);
     display: flex;
     flex-direction: column;
-    gap: clamp(16px, 2.5vw, 32px);
+    gap: clamp(12px, 2vw, 24px);
     min-width: max-content;
+}
+
+.bracket-stage[data-stage="winners"] {
+    --stage-accent: rgba(92, 188, 255, 0.9);
+    --stage-accent-soft: rgba(92, 188, 255, 0.35);
+    --stage-match-bg: linear-gradient(150deg, rgba(16, 32, 52, 0.96), rgba(10, 22, 38, 0.94));
+    --stage-team-bg: rgba(18, 36, 60, 0.94);
+    --stage-team-border: rgba(92, 188, 255, 0.28);
+    --stage-score-color: rgba(190, 220, 255, 0.92);
+}
+
+.bracket-stage[data-stage="losers"] {
+    --stage-accent: rgba(255, 148, 255, 0.85);
+    --stage-accent-soft: rgba(255, 148, 255, 0.35);
+    --stage-match-bg: linear-gradient(150deg, rgba(34, 18, 48, 0.96), rgba(26, 12, 38, 0.94));
+    --stage-team-bg: rgba(42, 20, 60, 0.92);
+    --stage-team-border: rgba(255, 148, 255, 0.28);
+    --stage-score-color: rgba(243, 211, 255, 0.92);
+}
+
+.bracket-stage[data-stage="finals"] {
+    --stage-accent: rgba(255, 214, 102, 0.92);
+    --stage-accent-soft: rgba(255, 214, 102, 0.42);
+    --stage-match-bg: linear-gradient(150deg, rgba(46, 32, 10, 0.96), rgba(30, 20, 6, 0.94));
+    --stage-team-bg: rgba(50, 34, 12, 0.9);
+    --stage-team-border: rgba(255, 214, 102, 0.32);
+    --stage-score-color: rgba(255, 235, 188, 0.92);
 }
 
 .bracket-container[data-format="double"] .bracket-stage[data-stage="winners"] {
@@ -1193,6 +1227,7 @@ button.danger:focus-visible,
 .bracket-container[data-format="double"] .bracket-stage[data-stage="losers"] {
     grid-column: 1;
     grid-row: 2;
+    align-self: start;
 }
 
 .bracket-container[data-format="double"] .bracket-stage[data-stage="finals"] {
@@ -1201,9 +1236,10 @@ button.danger:focus-visible,
     align-self: center;
 }
 
+
 .bracket-stage__columns {
     display: flex;
-    gap: clamp(64px, 6vw, 136px);
+    gap: clamp(52px, 5.5vw, 112px);
     min-width: max-content;
 }
 
@@ -1211,7 +1247,7 @@ button.danger:focus-visible,
     font-size: 0.92rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: rgba(143, 184, 255, 0.72);
+    color: var(--stage-accent);
 }
 
 .bracket-round {
@@ -1220,25 +1256,27 @@ button.danger:focus-visible,
     padding-right: clamp(16px, 2vw, 28px);
 }
 
+
 .bracket-round__title {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     font-size: 0.82rem;
     text-transform: uppercase;
     letter-spacing: 0.16em;
-    color: rgba(143, 184, 255, 0.82);
+    color: var(--stage-accent);
+    color: color-mix(in srgb, var(--stage-accent) 78%, #ffffff 22%);
 }
 
 .bracket-round__matches {
     position: relative;
-    min-height: 120px;
+    min-height: 96px;
 }
 
 .bracket-match {
     width: clamp(250px, 20vw, 320px);
     border-radius: 18px;
-    border: 1px solid rgba(30, 144, 255, 0.28);
-    background: linear-gradient(145deg, rgba(14, 24, 40, 0.96), rgba(10, 18, 32, 0.92));
-    box-shadow: 0 20px 32px rgba(5, 10, 22, 0.6);
+    border: 1px solid var(--stage-accent-soft);
+    background: var(--stage-match-bg);
+    box-shadow: 0 18px 28px rgba(5, 10, 22, 0.58);
     overflow: hidden;
 }
 
@@ -1248,8 +1286,8 @@ button.danger:focus-visible,
     align-items: center;
     justify-content: space-between;
     gap: 14px;
-    padding: 14px 18px;
-    background: rgba(20, 32, 52, 0.92);
+    padding: 12px 18px;
+    background: var(--stage-team-bg);
     color: var(--text-primary);
     font-size: 0.96rem;
     letter-spacing: 0.01em;
@@ -1257,7 +1295,7 @@ button.danger:focus-visible,
 }
 
 .bracket-match .team + .team {
-    border-top: 1px solid rgba(30, 144, 255, 0.18);
+    border-top: 1px solid var(--stage-team-border);
 }
 
 .bracket-match .team .label {
@@ -1274,7 +1312,7 @@ button.danger:focus-visible,
     text-align: right;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: rgba(172, 198, 240, 0.92);
+    color: var(--stage-score-color);
 }
 
 .bracket-match .team .score.is-hidden {
