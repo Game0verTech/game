@@ -1090,6 +1090,10 @@ button.danger:focus-visible,
     max-width: 100%;
     cursor: grab;
     --bracket-zoom: 1;
+    --bracket-match-min-width: 192px;
+    --bracket-match-width: 232px;
+    --bracket-match-max-width: 288px;
+    --bracket-label-column-width: max-content;
 }
 
 .bracket-container.is-panning {
@@ -1169,8 +1173,8 @@ button.danger:focus-visible,
 .bracket-columns {
     position: relative;
     display: flex;
-    gap: clamp(64px, 6vw, 132px);
-    padding: 8px clamp(16px, 4vw, 48px) clamp(40px, 4.5vw, 64px) 0;
+    gap: clamp(40px, 4.75vw, 96px);
+    padding: 8px clamp(12px, 3vw, 32px) clamp(36px, 4vw, 56px) 0;
     min-width: max-content;
     z-index: 1;
 }
@@ -1245,7 +1249,7 @@ button.danger:focus-visible,
 
 .bracket-stage__columns {
     display: flex;
-    gap: clamp(52px, 5.5vw, 112px);
+    gap: clamp(36px, 4.25vw, 88px);
     min-width: max-content;
 }
 
@@ -1258,8 +1262,8 @@ button.danger:focus-visible,
 
 .bracket-round {
     position: relative;
-    width: clamp(250px, 20vw, 320px);
-    padding-right: clamp(16px, 2vw, 28px);
+    width: clamp(var(--bracket-match-min-width, 192px), var(--bracket-match-width, 232px), var(--bracket-match-max-width, 288px));
+    padding-right: clamp(12px, 1.5vw, 20px);
 }
 
 
@@ -1278,7 +1282,7 @@ button.danger:focus-visible,
 }
 
 .bracket-match {
-    width: clamp(240px, 18vw, 300px);
+    width: clamp(var(--bracket-match-min-width, 192px), var(--bracket-match-width, 232px), var(--bracket-match-max-width, 288px));
     border-radius: 18px;
     border: 1px solid var(--stage-accent-soft);
     background: var(--stage-match-bg);
@@ -1288,10 +1292,10 @@ button.danger:focus-visible,
 
 .bracket-match .team {
     position: relative;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, var(--bracket-label-column-width, max-content)) auto;
+    column-gap: clamp(8px, 1.4vw, 12px);
     align-items: center;
-    justify-content: flex-start;
-    gap: 10px;
     padding: 12px 14px;
     background: var(--stage-team-bg);
     color: var(--text-primary);
@@ -1320,21 +1324,22 @@ button.danger:focus-visible,
     overflow: hidden;
     text-overflow: ellipsis;
     letter-spacing: 0.01em;
+    max-width: 100%;
 }
 
 .bracket-container.has-uniform-labels .bracket-match .team .label-text {
     flex: 0 0 var(--bracket-team-label-width);
     width: var(--bracket-team-label-width);
-    max-width: var(--bracket-team-label-width);
+    max-width: 100%;
 }
 
 .bracket-match .team .score {
-    width: 34px;
     text-align: right;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: var(--stage-score-color);
-    margin-left: auto;
+    justify-self: end;
+    min-width: 2ch;
 }
 
 .bracket-match .team .score.is-hidden {

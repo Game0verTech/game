@@ -610,6 +610,8 @@ $(function () {
 
         container.removeClass('has-uniform-labels');
         container.css('--bracket-team-label-width', '');
+        container.css('--bracket-label-column-width', '');
+        container.css('--bracket-match-width', '');
         container.addClass('is-measuring-labels');
 
         var labels = container.find('.bracket-match .team .label-text');
@@ -618,20 +620,91 @@ $(function () {
             return;
         }
 
-        var maxWidth = 0;
+        var maxLabelTextWidth = 0;
         labels.each(function () {
             var width = this ? this.scrollWidth : 0;
-            if (width > maxWidth) {
-                maxWidth = width;
+            if (width > maxLabelTextWidth) {
+                maxLabelTextWidth = width;
             }
         });
 
-        if (maxWidth > 0) {
-            container.css('--bracket-team-label-width', Math.ceil(maxWidth + 4) + 'px');
+        var uniformLabelWidth = Math.ceil(maxLabelTextWidth + 4);
+        if (uniformLabelWidth > 0) {
+            container.css('--bracket-team-label-width', uniformLabelWidth + 'px');
             container.addClass('has-uniform-labels');
         }
 
         container.removeClass('is-measuring-labels');
+
+        var maxLabelWrapperWidth = 0;
+        labels.each(function () {
+            var wrapper = this && this.parentNode ? this.parentNode : null;
+            if (!wrapper) {
+                return;
+            }
+            var fullWidth = wrapper.scrollWidth;
+            if (fullWidth > maxLabelWrapperWidth) {
+                maxLabelWrapperWidth = fullWidth;
+            }
+        });
+
+        if (maxLabelWrapperWidth <= 0) {
+            maxLabelWrapperWidth = uniformLabelWidth;
+        }
+
+        if (maxLabelWrapperWidth > 0) {
+            container.css('--bracket-label-column-width', Math.ceil(Math.max(maxLabelWrapperWidth, uniformLabelWidth) + 2) + 'px');
+        }
+
+        var maxScoreWidth = 0;
+        container
+            .find('.bracket-match .team .score')
+            .filter(function () {
+                return !$(this).hasClass('is-hidden');
+            })
+            .each(function () {
+                var width = this ? this.scrollWidth : 0;
+                if (width > maxScoreWidth) {
+                    maxScoreWidth = width;
+                }
+            });
+
+        if (maxScoreWidth <= 0) {
+            maxScoreWidth = 26;
+        }
+
+        var MATCH_HORIZONTAL_PADDING = 28; // default padding fallback (14px left + 14px right)
+        var LABEL_SCORE_GAP = 12; // default column gap fallback
+        var firstTeam = container.find('.bracket-match .team').first();
+        if (firstTeam.length) {
+            try {
+                var teamStyles = window.getComputedStyle(firstTeam[0]);
+                if (teamStyles) {
+                    var parsedGap = parseFloat(teamStyles.columnGap || teamStyles.gap);
+                    if (!Number.isNaN(parsedGap) && parsedGap >= 0) {
+                        LABEL_SCORE_GAP = parsedGap;
+                    }
+                    var paddingLeft = parseFloat(teamStyles.paddingLeft);
+                    var paddingRight = parseFloat(teamStyles.paddingRight);
+                    if (!Number.isNaN(paddingLeft) && !Number.isNaN(paddingRight)) {
+                        MATCH_HORIZONTAL_PADDING = Math.ceil(paddingLeft + paddingRight);
+                    }
+                }
+            } catch (measurementError) {
+                // Ignore errors from getComputedStyle in unsupported environments.
+            }
+        }
+
+        var computedMatchWidth = maxLabelWrapperWidth > 0
+            ? Math.ceil(maxLabelWrapperWidth + maxScoreWidth + LABEL_SCORE_GAP + MATCH_HORIZONTAL_PADDING)
+            : 0;
+
+        if (computedMatchWidth > 0) {
+            var MIN_MATCH_WIDTH = 192;
+            var MAX_MATCH_WIDTH = 288;
+            var clampedMatchWidth = Math.min(MAX_MATCH_WIDTH, Math.max(MIN_MATCH_WIDTH, computedMatchWidth));
+            container.css('--bracket-match-width', clampedMatchWidth + 'px');
+        }
     }
 
     function updateBracketContainerSize(container) {
