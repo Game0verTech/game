@@ -146,15 +146,15 @@ function stats_build_user_match_filter(int $userId): array
     $userIdStr = (string)$userId;
 
     $idRegexes = [
-        ':meta_player1_id' => '\\"player1\\"[^}]*\\"id\\":' . $userIdStr . '([^0-9])',
-        ':meta_player2_id' => '\\"player2\\"[^}]*\\"id\\":' . $userIdStr . '([^0-9])',
-        ':meta_player1_user_id' => '\\"player1\\"[^}]*\\"user_id\\":' . $userIdStr . '([^0-9])',
-        ':meta_player2_user_id' => '\\"player2\\"[^}]*\\"user_id\\":' . $userIdStr . '([^0-9])',
-        ':meta_player1_player_id' => '\\"player1\\"[^}]*\\"player_id\\":' . $userIdStr . '([^0-9])',
-        ':meta_player2_player_id' => '\\"player2\\"[^}]*\\"player_id\\":' . $userIdStr . '([^0-9])',
-        ':meta_winner_id' => '\\"winner\\"[^}]*\\"id\\":' . $userIdStr . '([^0-9])',
-        ':meta_winner_user_id' => '\\"winner\\"[^}]*\\"user_id\\":' . $userIdStr . '([^0-9])',
-        ':meta_winner_player_id' => '\\"winner\\"[^}]*\\"player_id\\":' . $userIdStr . '([^0-9])',
+        ':meta_player1_id' => '\\"player1\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player2_id' => '\\"player2\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player1_user_id' => '\\"player1\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player2_user_id' => '\\"player2\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player1_player_id' => '\\"player1\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player2_player_id' => '\\"player2\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_winner_id' => '\\"winner\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_winner_user_id' => '\\"winner\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_winner_player_id' => '\\"winner\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
     ];
 
     foreach ($idRegexes as $placeholder => $pattern) {
