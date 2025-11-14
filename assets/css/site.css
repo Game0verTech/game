@@ -926,6 +926,12 @@ body.modal-open {
     gap: 20px;
 }
 
+.calendar-actions {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
 .player-calendar__header {
     display: flex;
     align-items: center;

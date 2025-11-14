@@ -6,6 +6,7 @@ require __DIR__ . '/../../templates/header.php';
 
 $tournaments = list_tournaments();
 $calendarData = [];
+$canManageTournaments = user_has_role('admin') || user_has_role('manager');
 foreach ($tournaments as $tournament) {
     $tournamentId = (int)$tournament['id'];
     $players = tournament_players($tournamentId);
@@ -32,6 +33,11 @@ foreach ($tournaments as $tournament) {
 }
 $calendarJson = safe_json_encode($calendarData);
 ?>
+<?php if ($canManageTournaments): ?>
+    <div class="calendar-actions">
+        <button type="button" class="btn primary" data-modal-trigger="createTournamentModal">Create New Tournament</button>
+    </div>
+<?php endif; ?>
 <div class="card player-calendar">
     <div class="player-calendar__header">
         <div>
@@ -46,5 +52,45 @@ $calendarJson = safe_json_encode($calendarData);
         data-default-location="<?= sanitize(default_tournament_location()) ?>"
     ></div>
 </div>
+<?php if ($canManageTournaments): ?>
+    <div id="createTournamentModal" class="modal-overlay" hidden aria-hidden="true">
+        <div class="modal modal--md" role="dialog" aria-modal="true" aria-labelledby="createTournamentTitle">
+            <button type="button" class="modal__close" data-close-modal aria-label="Close create tournament modal">&times;</button>
+            <h3 id="createTournamentTitle">Create Tournament</h3>
+            <form method="post" action="/api/tournaments.php" class="modal-form">
+                <input type="hidden" name="action" value="create">
+                <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                <label>Name
+                    <input type="text" name="name" required data-modal-focus>
+                </label>
+                <label>Type
+                    <select name="type" required>
+                        <option value="single">Single Elimination</option>
+                        <option value="double">Double Elimination</option>
+                        <option value="round-robin">Round Robin</option>
+                    </select>
+                </label>
+                <label>Description
+                    <textarea name="description" rows="3"></textarea>
+                </label>
+                <div class="form-grid">
+                    <label>Date
+                        <input type="date" name="scheduled_date">
+                    </label>
+                    <label>Time
+                        <input type="time" name="scheduled_time">
+                    </label>
+                </div>
+                <label>Location
+                    <input type="text" name="location" value="<?= sanitize(default_tournament_location()) ?>" placeholder="<?= sanitize(default_tournament_location()) ?>">
+                </label>
+                <div class="modal-actions">
+                    <button type="submit" class="btn primary">Create Tournament</button>
+                    <button type="button" class="btn link" data-close-modal>Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php endif; ?>
 <?php require __DIR__ . '/../../templates/partials/tournament-viewer-modal.php'; ?>
 <?php require __DIR__ . '/../../templates/footer.php';
