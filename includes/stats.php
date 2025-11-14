@@ -51,11 +51,6 @@ function stats_decode_match_meta($meta): array
     return [];
 }
 
-function stats_escape_like(string $value): string
-{
-    return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
-}
-
 function stats_lookup_user_id_by_name(string $name): ?int
 {
     static $cache = [];
@@ -105,8 +100,7 @@ function stats_meta_player_id(?array $meta): ?int
         }
     }
 
-    $nameKeys = ['username', 'name'];
-    foreach ($nameKeys as $nameKey) {
+    foreach (['username', 'name'] as $nameKey) {
         if (!empty($meta[$nameKey]) && is_string($meta[$nameKey])) {
             $resolved = stats_lookup_user_id_by_name($meta[$nameKey]);
             if ($resolved) {
@@ -118,111 +112,609 @@ function stats_meta_player_id(?array $meta): ?int
     return null;
 }
 
-function stats_resolve_username(int $userId): ?string
+function stats_meta_player_name(?array $meta): ?string
 {
-    try {
-        $user = get_user_by_id($userId);
-        if ($user && isset($user['username']) && $user['username'] !== '') {
-            return (string)$user['username'];
+    if (!$meta) {
+        return null;
+    }
+
+    foreach (['display_name', 'name', 'username', 'team', 'label'] as $key) {
+        if (!empty($meta[$key]) && is_string($meta[$key])) {
+            $value = trim((string)$meta[$key]);
+            if ($value !== '') {
+                return $value;
+            }
         }
-    } catch (Throwable $e) {
-        error_log('Failed to resolve username for stats: ' . $e->getMessage());
+    }
+
+    if (!empty($meta['seed']) && is_scalar($meta['seed'])) {
+        return 'Seed ' . $meta['seed'];
     }
 
     return null;
 }
 
-function stats_build_user_match_filter(int $userId): array
+function stats_build_tournament_context(int $tournamentId): array
 {
-    $clauses = [
-        'tm.player1_user_id = :user_id',
-        'tm.player2_user_id = :user_id',
-        'tm.winner_user_id = :user_id',
-    ];
+    static $cache = [];
 
-    $bindings = [
-        [
-            'name' => ':user_id',
-            'value' => $userId,
-            'type' => PDO::PARAM_INT,
-        ],
-    ];
+    if (isset($cache[$tournamentId])) {
+        return $cache[$tournamentId];
+    }
 
-    $userIdStr = (string)$userId;
-    $quote = chr(34);
+    $teamIndexMap = [];
+    $usernamesById = [];
+    $usernameLookup = [];
 
-    $likeEscape = " ESCAPE '\\\\'";
+    try {
+        $players = tournament_players($tournamentId);
+    } catch (Throwable $e) {
+        error_log('Failed to load tournament players for stats context: ' . $e->getMessage());
+        $players = [];
+    }
 
-    if ($userId > 0) {
-        $metaKeys = ['id', 'user_id', 'player_id'];
-        foreach ($metaKeys as $key) {
-            $placeholderBase = ':meta_' . str_replace('_', '', $key);
-            $placeholderInt = $placeholderBase . '_int';
-            $placeholderStr = $placeholderBase . '_str';
-
-            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderInt . $likeEscape . ')';
-            $bindings[] = [
-                'name' => $placeholderInt,
-                'value' => '%' . stats_escape_like($quote . $key . $quote . ':' . $userIdStr) . '%',
-                'type' => PDO::PARAM_STR,
-            ];
-
-            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderStr . $likeEscape . ')';
-            $bindings[] = [
-                'name' => $placeholderStr,
-                'value' => '%' . stats_escape_like($quote . $key . $quote . ':' . $quote . $userIdStr . $quote) . '%',
-                'type' => PDO::PARAM_STR,
-            ];
+    $index = 0;
+    foreach ($players as $player) {
+        if (!isset($player['user_id'])) {
+            $index++;
+            continue;
         }
+
+        $userId = (int)$player['user_id'];
+        if ($userId <= 0) {
+            $index++;
+            continue;
+        }
+
+        $teamIndexMap[$index] = $userId;
+        if (!empty($player['username'])) {
+            $usernamesById[$userId] = (string)$player['username'];
+            $usernameLookup[strtolower((string)$player['username'])] = $userId;
+        }
+
+        $index++;
     }
 
-    $username = stats_resolve_username($userId);
-    if ($username !== null) {
-        $usernameLower = strtolower($username);
-        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_username' . $likeEscape . ')';
-        $bindings[] = [
-            'name' => ':meta_username',
-            'value' => '%' . stats_escape_like($quote . 'username' . $quote . ':' . $quote . $usernameLower . $quote) . '%',
-            'type' => PDO::PARAM_STR,
-        ];
-
-        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_name' . $likeEscape . ')';
-        $bindings[] = [
-            'name' => ':meta_name',
-            'value' => '%' . stats_escape_like($quote . 'name' . $quote . ':' . $quote . $usernameLower . $quote) . '%',
-            'type' => PDO::PARAM_STR,
-        ];
-    }
-
-    return [
-        'condition' => '(' . implode(' OR ', $clauses) . ')',
-        'bindings' => $bindings,
+    return $cache[$tournamentId] = [
+        'team_index_map' => $teamIndexMap,
+        'usernames_by_id' => $usernamesById,
+        'username_lookup' => $usernameLookup,
     ];
 }
 
-function is_final_stage_label(?string $stage): bool
+function stats_resolve_player_slot(?int $columnId, ?array $meta, array $context, ?string $fallbackName): array
 {
-    if ($stage === null) {
-        return false;
+    $id = ($columnId && $columnId > 0) ? $columnId : null;
+    $name = $fallbackName !== null ? trim((string)$fallbackName) : null;
+    $teamIndex = null;
+
+    if ($meta && isset($meta['team_index']) && is_numeric($meta['team_index'])) {
+        $teamIndex = (int)$meta['team_index'];
     }
 
-    $normalized = strtolower(trim($stage));
-    if ($normalized === '') {
-        return false;
+    if ($meta) {
+        foreach (['id', 'user_id', 'player_id'] as $key) {
+            if (isset($meta[$key]) && is_numeric($meta[$key])) {
+                $candidate = (int)$meta[$key];
+                if ($candidate > 0) {
+                    $id = $id ?? $candidate;
+                    break;
+                }
+            }
+        }
     }
 
-    if (strpos($normalized, 'semi') !== false || strpos($normalized, 'quarter') !== false) {
-        return false;
+    if ($id === null && $teamIndex !== null && isset($context['team_index_map'][$teamIndex])) {
+        $id = (int)$context['team_index_map'][$teamIndex];
     }
 
-    return strpos($normalized, 'final') !== false || strpos($normalized, 'championship') !== false;
+    if ($id === null && $meta) {
+        $metaName = stats_meta_player_name($meta);
+        if ($metaName) {
+            $normalized = strtolower($metaName);
+            if (isset($context['username_lookup'][$normalized])) {
+                $id = (int)$context['username_lookup'][$normalized];
+            } else {
+                $resolved = stats_lookup_user_id_by_name($metaName);
+                if ($resolved) {
+                    $id = $resolved;
+                }
+            }
+        }
+    }
+
+    if ($id === null && $name) {
+        $normalized = strtolower($name);
+        if (isset($context['username_lookup'][$normalized])) {
+            $id = (int)$context['username_lookup'][$normalized];
+        } else {
+            $resolved = stats_lookup_user_id_by_name($name);
+            if ($resolved) {
+                $id = $resolved;
+            }
+        }
+    }
+
+    if ($teamIndex === null && $meta && isset($meta['team']) && is_numeric($meta['team'])) {
+        $teamIndex = (int)$meta['team'];
+    }
+
+    if ($teamIndex === null && $id !== null && !empty($context['team_index_map'])) {
+        $foundIndex = array_search($id, $context['team_index_map'], true);
+        if ($foundIndex !== false) {
+            $teamIndex = (int)$foundIndex;
+        }
+    }
+
+    if ($name === null && $meta) {
+        $metaName = stats_meta_player_name($meta);
+        if ($metaName !== null) {
+            $name = $metaName;
+        }
+    }
+
+    if ($name === null && $id !== null && isset($context['usernames_by_id'][$id])) {
+        $name = $context['usernames_by_id'][$id];
+    }
+
+    return [
+        'id' => $id,
+        'name' => $name,
+        'team_index' => $teamIndex,
+    ];
+}
+
+function stats_normalize_match_context(array $match, array $tournamentContext = []): array
+{
+    $meta = [];
+    if (array_key_exists('meta', $match)) {
+        $meta = stats_decode_match_meta($match['meta']);
+    }
+
+    $player1Meta = null;
+    $player2Meta = null;
+
+    if (isset($meta['player1']) && is_array($meta['player1'])) {
+        $player1Meta = $meta['player1'];
+    }
+
+    if (isset($meta['player2']) && is_array($meta['player2'])) {
+        $player2Meta = $meta['player2'];
+    }
+
+    if ($player1Meta === null && !empty($meta['players']) && is_array($meta['players'])) {
+        if (isset($meta['players'][1]) && is_array($meta['players'][1])) {
+            $player1Meta = $meta['players'][1];
+        } elseif (isset($meta['players'][0]) && is_array($meta['players'][0])) {
+            $player1Meta = $meta['players'][0];
+        }
+    }
+
+    if ($player2Meta === null && !empty($meta['players']) && is_array($meta['players'])) {
+        if (isset($meta['players'][2]) && is_array($meta['players'][2])) {
+            $player2Meta = $meta['players'][2];
+        } elseif (isset($meta['players'][1]) && is_array($meta['players'][1])) {
+            $player2Meta = $meta['players'][1];
+        }
+    }
+
+    if ($player1Meta === null && isset($meta['home']) && is_array($meta['home'])) {
+        $player1Meta = $meta['home'];
+    }
+
+    if ($player2Meta === null && isset($meta['away']) && is_array($meta['away'])) {
+        $player2Meta = $meta['away'];
+    }
+
+    $player1ColumnId = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : null;
+    if ($player1ColumnId !== null && $player1ColumnId <= 0) {
+        $player1ColumnId = null;
+    }
+
+    $player2ColumnId = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : null;
+    if ($player2ColumnId !== null && $player2ColumnId <= 0) {
+        $player2ColumnId = null;
+    }
+
+    $player1 = stats_resolve_player_slot($player1ColumnId, $player1Meta, $tournamentContext, $match['player1_name'] ?? null);
+    $player2 = stats_resolve_player_slot($player2ColumnId, $player2Meta, $tournamentContext, $match['player2_name'] ?? null);
+
+    $score1 = isset($match['score1']) && is_numeric($match['score1']) ? (int)$match['score1'] : null;
+    $score2 = isset($match['score2']) && is_numeric($match['score2']) ? (int)$match['score2'] : null;
+
+    $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : 0;
+    $winnerId = $winnerId > 0 ? $winnerId : null;
+    $winnerSlot = null;
+
+    $winnerMeta = null;
+    if (isset($meta['winner']) && is_array($meta['winner'])) {
+        $winnerMeta = $meta['winner'];
+    } elseif (!empty($meta['winners']) && is_array($meta['winners'])) {
+        $firstWinner = reset($meta['winners']);
+        if (is_array($firstWinner)) {
+            $winnerMeta = $firstWinner;
+        }
+    }
+
+    if ($winnerMeta) {
+        foreach (['id', 'user_id', 'player_id'] as $key) {
+            if ($winnerId === null && isset($winnerMeta[$key]) && is_numeric($winnerMeta[$key])) {
+                $candidate = (int)$winnerMeta[$key];
+                if ($candidate > 0) {
+                    $winnerId = $candidate;
+                    break;
+                }
+            }
+        }
+
+        if (isset($winnerMeta['slot'])) {
+            $slotValue = $winnerMeta['slot'];
+            if (is_numeric($slotValue)) {
+                $winnerSlot = (int)$slotValue;
+            } elseif (is_string($slotValue)) {
+                $normalizedSlot = strtolower(trim($slotValue));
+                if (in_array($normalizedSlot, ['player1', 'p1', 'home', 'one'], true)) {
+                    $winnerSlot = 1;
+                } elseif (in_array($normalizedSlot, ['player2', 'p2', 'away', 'two'], true)) {
+                    $winnerSlot = 2;
+                }
+            }
+        }
+
+        if ($winnerSlot === null && isset($winnerMeta['team_index']) && is_numeric($winnerMeta['team_index'])) {
+            $winnerIndex = (int)$winnerMeta['team_index'];
+            if ($player1['team_index'] !== null && $winnerIndex === (int)$player1['team_index']) {
+                $winnerSlot = 1;
+            } elseif ($player2['team_index'] !== null && $winnerIndex === (int)$player2['team_index']) {
+                $winnerSlot = 2;
+            }
+        }
+    }
+
+    if ($winnerSlot === null && !empty($meta['result']) && is_string($meta['result'])) {
+        $normalized = strtolower(trim($meta['result']));
+        if (in_array($normalized, ['player1', 'p1', 'home', 'one'], true)) {
+            $winnerSlot = 1;
+        } elseif (in_array($normalized, ['player2', 'p2', 'away', 'two'], true)) {
+            $winnerSlot = 2;
+        }
+    }
+
+    if ($winnerId !== null) {
+        if ($player1['id'] !== null && $winnerId === $player1['id']) {
+            $winnerSlot = $winnerSlot ?? 1;
+        } elseif ($player2['id'] !== null && $winnerId === $player2['id']) {
+            $winnerSlot = $winnerSlot ?? 2;
+        }
+    }
+
+    if ($winnerSlot === null && $score1 !== null && $score2 !== null && $score1 !== $score2) {
+        $winnerSlot = $score1 > $score2 ? 1 : 2;
+    }
+
+    if ($winnerId === null && $winnerSlot !== null) {
+        if ($winnerSlot === 1 && $player1['id'] !== null) {
+            $winnerId = $player1['id'];
+        } elseif ($winnerSlot === 2 && $player2['id'] !== null) {
+            $winnerId = $player2['id'];
+        }
+    }
+
+    $player1['score'] = $score1;
+    $player2['score'] = $score2;
+
+    if ($player1['name'] === null && isset($match['player1_name']) && $match['player1_name'] !== '') {
+        $player1['name'] = (string)$match['player1_name'];
+    }
+
+    if ($player2['name'] === null && isset($match['player2_name']) && $match['player2_name'] !== '') {
+        $player2['name'] = (string)$match['player2_name'];
+    }
+
+    return [
+        'meta' => $meta,
+        'player1' => $player1,
+        'player2' => $player2,
+        'winner_id' => $winnerId,
+        'winner_slot' => $winnerSlot,
+    ];
+}
+
+function stats_normalize_match_for_user(int $userId, array $match, array $tournament, array $context): ?array
+{
+    if (!isset($match['id'])) {
+        return null;
+    }
+
+    $normalized = stats_normalize_match_context($match, $context);
+    $player1 = $normalized['player1'];
+    $player2 = $normalized['player2'];
+    $meta = $normalized['meta'];
+
+    $userSlot = null;
+    if ($player1['id'] !== null && $player1['id'] === $userId) {
+        $userSlot = 1;
+    } elseif ($player2['id'] !== null && $player2['id'] === $userId) {
+        $userSlot = 2;
+    } else {
+        if (!empty($meta['players']) && is_array($meta['players'])) {
+            foreach ($meta['players'] as $slot => $details) {
+                if (!is_array($details)) {
+                    continue;
+                }
+                $candidate = null;
+                foreach (['id', 'user_id', 'player_id'] as $key) {
+                    if (isset($details[$key]) && is_numeric($details[$key])) {
+                        $candidate = (int)$details[$key];
+                        break;
+                    }
+                }
+                if ($candidate !== null && $candidate === $userId) {
+                    if (is_numeric($slot)) {
+                        $userSlot = (int)$slot === 2 ? 2 : 1;
+                    } elseif (is_string($slot)) {
+                        $normalizedSlot = strtolower(trim($slot));
+                        $userSlot = in_array($normalizedSlot, ['player2', 'p2', 'away', 'two'], true) ? 2 : 1;
+                    } else {
+                        $userSlot = 1;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if ($userSlot === null && $normalized['winner_id'] === $userId && $normalized['winner_slot'] !== null) {
+            $userSlot = (int)$normalized['winner_slot'];
+        }
+    }
+
+    if ($userSlot === null) {
+        return null;
+    }
+
+    $opponent = $userSlot === 1 ? $player2 : $player1;
+    $opponentId = $opponent['id'];
+    $opponentName = $opponent['name'] ?? null;
+
+    if ($opponentName === null && $opponentId !== null && isset($context['usernames_by_id'][$opponentId])) {
+        $opponentName = $context['usernames_by_id'][$opponentId];
+    }
+
+    if ($opponentName === null) {
+        $opponentName = 'TBD';
+    }
+
+    $winnerId = $normalized['winner_id'];
+    $winnerSlot = $normalized['winner_slot'];
+    $score1 = $player1['score'];
+    $score2 = $player2['score'];
+
+    if ($winnerId === null && $winnerSlot !== null) {
+        if ($winnerSlot === 1 && $player1['id'] !== null) {
+            $winnerId = $player1['id'];
+        } elseif ($winnerSlot === 2 && $player2['id'] !== null) {
+            $winnerId = $player2['id'];
+        }
+    }
+
+    $hasScores = $score1 !== null && $score2 !== null;
+    $isFinished = false;
+    $isWin = false;
+
+    if ($winnerId !== null) {
+        $isFinished = true;
+        $isWin = $winnerId === $userId;
+    } elseif ($winnerSlot !== null) {
+        $isFinished = true;
+        $isWin = $winnerSlot === $userSlot;
+    } elseif ($hasScores && $score1 !== $score2) {
+        $isFinished = true;
+        if ($userSlot === 1) {
+            $isWin = $score1 > $score2;
+            $winnerSlot = $score1 > $score2 ? 1 : 2;
+        } else {
+            $isWin = $score2 > $score1;
+            $winnerSlot = $score1 > $score2 ? 1 : 2;
+        }
+
+        if ($winnerSlot === 1 && $player1['id'] !== null) {
+            $winnerId = $player1['id'];
+        } elseif ($winnerSlot === 2 && $player2['id'] !== null) {
+            $winnerId = $player2['id'];
+        }
+    }
+
+    $scoreFor = $hasScores ? ($userSlot === 1 ? $score1 : $score2) : null;
+    $scoreAgainst = $hasScores ? ($userSlot === 1 ? $score2 : $score1) : null;
+
+    if (!$hasScores && $isFinished) {
+        $scoreFor = $isWin ? 1 : 0;
+        $scoreAgainst = $isWin ? 0 : 1;
+    }
+
+    $tournamentId = isset($tournament['id']) ? (int)$tournament['id'] : null;
+
+    return [
+        'id' => (int)$match['id'],
+        'tournament_id' => $tournamentId,
+        'tournament_name' => $tournament['name'] ?? 'Tournament',
+        'tournament_status' => $tournament['status'] ?? '',
+        'stage' => $match['stage'] ?? null,
+        'round' => isset($match['round']) ? (int)$match['round'] : null,
+        'match_index' => isset($match['match_index']) ? (int)$match['match_index'] : null,
+        'user_slot' => $userSlot,
+        'opponent_id' => $opponentId,
+        'opponent_name' => $opponentName,
+        'score_for' => $scoreFor,
+        'score_against' => $scoreAgainst,
+        'raw_score1' => $score1,
+        'raw_score2' => $score2,
+        'winner_id' => $winnerId,
+        'winner_slot' => $winnerSlot,
+        'is_finished' => $isFinished,
+        'is_win' => $isWin,
+        'result' => $isFinished ? ($isWin ? 'win' : 'loss') : 'pending',
+        'meta' => $meta,
+    ];
+}
+
+function stats_user_match_history(int $userId): array
+{
+    static $cache = [];
+
+    if (isset($cache[$userId])) {
+        return $cache[$userId];
+    }
+
+    $history = [
+        'tournaments' => [],
+        'matches' => [],
+    ];
+
+    try {
+        $registered = user_tournaments($userId);
+    } catch (Throwable $e) {
+        error_log('Failed to load user tournaments for stats: ' . $e->getMessage());
+        $registered = [];
+    }
+
+    foreach ($registered as $tournament) {
+        if (!isset($tournament['id'])) {
+            continue;
+        }
+        $tid = (int)$tournament['id'];
+        if ($tid <= 0) {
+            continue;
+        }
+
+        $history['tournaments'][$tid] = [
+            'id' => $tid,
+            'name' => (string)($tournament['name'] ?? 'Tournament'),
+            'status' => strtolower((string)($tournament['status'] ?? '')),
+            'type' => $tournament['type'] ?? null,
+        ];
+    }
+
+    $directMatches = [];
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare(
+            'SELECT tm.*, t.name AS tournament_name, t.status AS tournament_status
+             FROM tournament_matches tm
+             INNER JOIN tournaments t ON t.id = tm.tournament_id
+             WHERE tm.player1_user_id = :user OR tm.player2_user_id = :user OR tm.winner_user_id = :user
+             ORDER BY tm.id ASC'
+        );
+        $stmt->execute([':user' => $userId]);
+        $directMatches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('Failed to query tournament matches for stats: ' . $e->getMessage());
+        $directMatches = [];
+    }
+
+    foreach ($directMatches as $row) {
+        $tid = isset($row['tournament_id']) ? (int)$row['tournament_id'] : 0;
+        if ($tid <= 0) {
+            continue;
+        }
+
+        if (!isset($history['tournaments'][$tid])) {
+            $history['tournaments'][$tid] = [
+                'id' => $tid,
+                'name' => (string)($row['tournament_name'] ?? 'Tournament'),
+                'status' => strtolower((string)($row['tournament_status'] ?? '')),
+                'type' => $row['stage'] ?? null,
+            ];
+        } else {
+            if (empty($history['tournaments'][$tid]['name']) && !empty($row['tournament_name'])) {
+                $history['tournaments'][$tid]['name'] = (string)$row['tournament_name'];
+            }
+            if (empty($history['tournaments'][$tid]['status']) && !empty($row['tournament_status'])) {
+                $history['tournaments'][$tid]['status'] = strtolower((string)$row['tournament_status']);
+            }
+        }
+    }
+
+    $matches = [];
+    $contextCache = [];
+
+    foreach ($history['tournaments'] as $tid => $info) {
+        $contextCache[$tid] = stats_build_tournament_context($tid);
+        try {
+            $records = tournament_matches($tid);
+        } catch (Throwable $e) {
+            error_log('Failed to load matches for tournament ' . $tid . ': ' . $e->getMessage());
+            $records = [];
+        }
+
+        foreach ($records as $record) {
+            if (!isset($record['id'])) {
+                continue;
+            }
+
+            $normalized = stats_normalize_match_for_user($userId, $record, $info, $contextCache[$tid]);
+            if (!$normalized) {
+                continue;
+            }
+
+            $matchId = $normalized['id'];
+            if (!isset($matches[$matchId])) {
+                $matches[$matchId] = $normalized;
+            }
+        }
+    }
+
+    foreach ($directMatches as $row) {
+        $matchId = isset($row['id']) ? (int)$row['id'] : 0;
+        if ($matchId <= 0 || isset($matches[$matchId])) {
+            continue;
+        }
+
+        $tid = isset($row['tournament_id']) ? (int)$row['tournament_id'] : 0;
+        if ($tid <= 0) {
+            continue;
+        }
+
+        if (!isset($history['tournaments'][$tid])) {
+            try {
+                $tournament = get_tournament($tid);
+            } catch (Throwable $e) {
+                $tournament = null;
+            }
+
+            if ($tournament) {
+                $history['tournaments'][$tid] = [
+                    'id' => $tid,
+                    'name' => (string)($tournament['name'] ?? 'Tournament'),
+                    'status' => strtolower((string)($tournament['status'] ?? '')),
+                    'type' => $tournament['type'] ?? null,
+                ];
+            } else {
+                $history['tournaments'][$tid] = [
+                    'id' => $tid,
+                    'name' => (string)($row['tournament_name'] ?? 'Tournament'),
+                    'status' => strtolower((string)($row['tournament_status'] ?? '')),
+                    'type' => $row['stage'] ?? null,
+                ];
+            }
+        }
+
+        $context = $contextCache[$tid] ?? ($contextCache[$tid] = stats_build_tournament_context($tid));
+        $normalized = stats_normalize_match_for_user($userId, $row, $history['tournaments'][$tid], $context);
+        if ($normalized) {
+            $matches[$matchId] = $normalized;
+        }
+    }
+
+    ksort($matches);
+    $history['matches'] = array_values($matches);
+
+    return $cache[$userId] = $history;
 }
 
 function calculate_user_stat_snapshot(int $userId): ?array
 {
     try {
-        $pdo = db();
-
         $snapshot = [
             'user_id' => $userId,
             'tournaments_played' => 0,
@@ -233,232 +725,90 @@ function calculate_user_stat_snapshot(int $userId): ?array
             'matches_played' => 0,
             'pending_matches' => 0,
             'win_rate' => 0.0,
-            'points_for' => 0,
-            'points_against' => 0,
-            'point_differential' => 0,
-            'average_margin' => 0.0,
-            'average_points_for' => 0.0,
-            'average_points_against' => 0.0,
             'best_win_streak' => 0,
-            'current_win_streak' => 0,
             'current_streak' => [
                 'type' => null,
                 'length' => 0,
             ],
             'recent_form' => [],
-            'shutout_wins' => 0,
-            'finals_appearances' => 0,
-            'runner_up_finishes' => 0,
-            'tournaments_won' => 0,
         ];
 
-        $tournamentStmt = $pdo->prepare('SELECT t.id, t.status FROM tournaments t INNER JOIN tournament_players tp ON t.id = tp.tournament_id WHERE tp.user_id = :user');
-        $tournamentStmt->execute([':user' => $userId]);
-        $tournaments = $tournamentStmt->fetchAll();
+        $history = stats_user_match_history($userId);
+        $tournaments = $history['tournaments'] ?? [];
+        $matches = $history['matches'] ?? [];
 
-        $tournamentStatuses = [];
-        foreach ($tournaments as $row) {
-            if (!isset($row['id'])) {
-                continue;
-            }
-            $tournamentId = (int)$row['id'];
-            if ($tournamentId <= 0) {
-                continue;
-            }
-            $tournamentStatuses[$tournamentId] = strtolower((string)($row['status'] ?? ''));
-        }
+        $snapshot['tournaments_played'] = count($tournaments);
 
-        $matches = [];
-        $matchMap = [];
-
-        $filter = stats_build_user_match_filter($userId);
-        $matchSql = 'SELECT tm.*, t.status AS tournament_status
-                     FROM tournament_matches tm
-                     INNER JOIN tournaments t ON tm.tournament_id = t.id
-                     WHERE ' . $filter['condition'] . '
-                     ORDER BY tm.id ASC';
-        $matchesStmt = $pdo->prepare($matchSql);
-        foreach ($filter['bindings'] as $binding) {
-            $type = $binding['type'] ?? PDO::PARAM_STR;
-            $matchesStmt->bindValue($binding['name'], $binding['value'], $type);
-        }
-        $matchesStmt->execute();
-        foreach ($matchesStmt->fetchAll() as $match) {
-            if (!isset($match['id'])) {
-                continue;
-            }
-            $matchId = (int)$match['id'];
-            if ($matchId <= 0) {
-                continue;
-            }
-            $matchMap[$matchId] = $match;
-
-            if (isset($match['tournament_id'])) {
-                $tournamentId = (int)$match['tournament_id'];
-                if ($tournamentId > 0 && !isset($tournamentStatuses[$tournamentId]) && isset($match['tournament_status'])) {
-                    $tournamentStatuses[$tournamentId] = strtolower((string)$match['tournament_status']);
-                }
-            }
-        }
-
-        if ($matchMap) {
-            ksort($matchMap);
-            $matches = array_values($matchMap);
-        }
-
-        foreach ($tournamentStatuses as $status) {
+        $completed = 0;
+        $active = 0;
+        foreach ($tournaments as $info) {
+            $status = strtolower((string)($info['status'] ?? ''));
             if ($status === 'completed') {
-                $snapshot['tournaments_completed']++;
+                $completed++;
             } elseif (in_array($status, ['open', 'live'], true)) {
-                $snapshot['tournaments_active']++;
+                $active++;
             }
         }
-
-        $snapshot['tournaments_played'] = count($tournamentStatuses);
+        $snapshot['tournaments_completed'] = $completed;
+        $snapshot['tournaments_active'] = $active;
 
         $wins = 0;
         $losses = 0;
         $matchesPlayed = 0;
         $pendingMatches = 0;
-        $pointsFor = 0;
-        $pointsAgainst = 0;
-        $shutouts = 0;
-        $finals = 0;
-        $runnerUps = 0;
-        $recentForm = [];
+        $currentStreakType = null;
+        $currentStreakLength = 0;
         $currentWinStreak = 0;
         $bestWinStreak = 0;
-        $currentResultType = null;
-        $currentResultStreak = 0;
+        $recentOutcomes = [];
 
         foreach ($matches as $match) {
-            $meta = [];
-            if (array_key_exists('meta', $match)) {
-                $meta = stats_decode_match_meta($match['meta']);
-            }
+            if (!empty($match['is_finished'])) {
+                $matchesPlayed++;
+                $isWin = !empty($match['is_win']);
+                $recentOutcomes[] = $isWin ? 'W' : 'L';
 
-            $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
-            if ($player1Id <= 0) {
-                $player1Id = stats_meta_player_id(isset($meta['player1']) && is_array($meta['player1']) ? $meta['player1'] : null) ?? 0;
-            }
-
-            $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
-            if ($player2Id <= 0) {
-                $player2Id = stats_meta_player_id(isset($meta['player2']) && is_array($meta['player2']) ? $meta['player2'] : null) ?? 0;
-            }
-
-            if ($player1Id !== $userId && $player2Id !== $userId) {
-                continue;
-            }
-
-            $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : null;
-            if ($winnerId === null && isset($meta['winner']) && is_array($meta['winner'])) {
-                $winnerId = stats_meta_player_id($meta['winner']);
-                if ($winnerId === null && isset($meta['winner']['slot'])) {
-                    $slot = (int)$meta['winner']['slot'];
-                    if ($slot === 1 && $player1Id > 0) {
-                        $winnerId = $player1Id;
-                    } elseif ($slot === 2 && $player2Id > 0) {
-                        $winnerId = $player2Id;
+                if ($isWin) {
+                    $wins++;
+                    $currentWinStreak++;
+                    if ($currentWinStreak > $bestWinStreak) {
+                        $bestWinStreak = $currentWinStreak;
                     }
-                }
-            }
-
-            $isFinalStage = is_final_stage_label($match['stage'] ?? null);
-
-            $scoreFor = null;
-            $scoreAgainst = null;
-
-            if ($player1Id === $userId) {
-                if (isset($match['score1']) && $match['score1'] !== null && $match['score1'] !== '') {
-                    $scoreFor = (int)$match['score1'];
-                }
-                if (isset($match['score2']) && $match['score2'] !== null && $match['score2'] !== '') {
-                    $scoreAgainst = (int)$match['score2'];
-                }
-            } elseif ($player2Id === $userId) {
-                if (isset($match['score2']) && $match['score2'] !== null && $match['score2'] !== '') {
-                    $scoreFor = (int)$match['score2'];
-                }
-                if (isset($match['score1']) && $match['score1'] !== null && $match['score1'] !== '') {
-                    $scoreAgainst = (int)$match['score1'];
-                }
-            }
-
-            if ($winnerId === null) {
-                $pendingMatches++;
-                continue;
-            }
-
-            if ($scoreFor !== null) {
-                $pointsFor += $scoreFor;
-            }
-            if ($scoreAgainst !== null) {
-                $pointsAgainst += $scoreAgainst;
-            }
-
-            $matchesPlayed++;
-
-            if ($winnerId === $userId) {
-                $wins++;
-                $recentForm[] = 'W';
-                $currentWinStreak++;
-                if ($currentWinStreak > $bestWinStreak) {
-                    $bestWinStreak = $currentWinStreak;
-                }
-                if ($scoreAgainst === 0 && $scoreFor !== null) {
-                    $shutouts++;
-                }
-                if ($currentResultType === 'win') {
-                    $currentResultStreak++;
                 } else {
-                    $currentResultType = 'win';
-                    $currentResultStreak = 1;
+                    $losses++;
+                    $currentWinStreak = 0;
+                }
+
+                $resultType = $isWin ? 'win' : 'loss';
+                if ($currentStreakType === $resultType) {
+                    $currentStreakLength++;
+                } else {
+                    $currentStreakType = $resultType;
+                    $currentStreakLength = 1;
                 }
             } else {
-                $losses++;
-                $recentForm[] = 'L';
-                $currentWinStreak = 0;
-                if ($currentResultType === 'loss') {
-                    $currentResultStreak++;
-                } else {
-                    $currentResultType = 'loss';
-                    $currentResultStreak = 1;
-                }
-                if ($isFinalStage && $winnerId !== null) {
-                    $runnerUps++;
-                }
-            }
-
-            if ($isFinalStage) {
-                $finals++;
+                $pendingMatches++;
             }
         }
-
-        $recentForm = array_slice($recentForm, -10);
 
         $snapshot['wins'] = $wins;
         $snapshot['losses'] = $losses;
         $snapshot['matches_played'] = $matchesPlayed;
         $snapshot['pending_matches'] = $pendingMatches;
         $snapshot['win_rate'] = $matchesPlayed > 0 ? round(($wins / $matchesPlayed) * 100, 2) : 0.0;
-        $snapshot['points_for'] = $pointsFor;
-        $snapshot['points_against'] = $pointsAgainst;
-        $snapshot['point_differential'] = $pointsFor - $pointsAgainst;
-        $snapshot['average_margin'] = $matchesPlayed > 0 ? round(($pointsFor - $pointsAgainst) / $matchesPlayed, 2) : 0.0;
-        $snapshot['average_points_for'] = $matchesPlayed > 0 ? round($pointsFor / $matchesPlayed, 2) : 0.0;
-        $snapshot['average_points_against'] = $matchesPlayed > 0 ? round($pointsAgainst / $matchesPlayed, 2) : 0.0;
         $snapshot['best_win_streak'] = $bestWinStreak;
-        $snapshot['current_win_streak'] = $currentWinStreak;
         $snapshot['current_streak'] = [
-            'type' => $currentResultType,
-            'length' => $currentResultStreak,
+            'type' => $currentStreakType,
+            'length' => $currentStreakLength,
         ];
-        $snapshot['recent_form'] = $recentForm;
-        $snapshot['shutout_wins'] = $shutouts;
-        $snapshot['finals_appearances'] = $finals;
-        $snapshot['runner_up_finishes'] = $runnerUps;
-        $snapshot['tournaments_won'] = count_user_tournament_titles($userId);
+        $snapshot['recent_form'] = array_slice($recentOutcomes, -10);
+
+        try {
+            $snapshot['tournaments_won'] = count_user_tournament_titles($userId);
+        } catch (Throwable $e) {
+            error_log('Failed to count tournament titles for user ' . $userId . ': ' . $e->getMessage());
+            $snapshot['tournaments_won'] = 0;
+        }
 
         return $snapshot;
     } catch (Throwable $e) {
@@ -534,74 +884,46 @@ function recent_results(int $userId, int $limit = 5): array
         return [];
     }
 
-    $filter = stats_build_user_match_filter($userId);
-    $sql = 'SELECT tm.*, t.name as tournament_name
-            FROM tournament_matches tm
-            INNER JOIN tournaments t ON tm.tournament_id = t.id
-            WHERE ' . $filter['condition'] . '
-            ORDER BY tm.id DESC
-            LIMIT :limit';
-    $stmt = db()->prepare($sql);
-    foreach ($filter['bindings'] as $binding) {
-        $type = $binding['type'] ?? PDO::PARAM_STR;
-        $stmt->bindValue($binding['name'], $binding['value'], $type);
-    }
-    $fetchLimit = max($limit * 5, $limit + 5);
-    $stmt->bindValue(':limit', $fetchLimit, PDO::PARAM_INT);
-    $stmt->execute();
-
-    $rows = $stmt->fetchAll();
-    if (!$rows) {
+    try {
+        $history = stats_user_match_history($userId);
+    } catch (Throwable $e) {
+        error_log('Failed to load recent results for user ' . $userId . ': ' . $e->getMessage());
         return [];
     }
 
-    $seen = [];
-    $unique = [];
-    foreach ($rows as $row) {
-        if (!isset($row['id'])) {
-            continue;
-        }
-        $matchId = (int)$row['id'];
-        if ($matchId <= 0 || isset($seen[$matchId])) {
-            continue;
-        }
-        $seen[$matchId] = true;
-        $unique[] = $row;
-    }
-
-    if (!$unique) {
+    $matches = $history['matches'] ?? [];
+    if (!$matches) {
         return [];
     }
 
-    $filtered = [];
-    foreach ($unique as $row) {
-        $meta = [];
-        if (array_key_exists('meta', $row)) {
-            $meta = stats_decode_match_meta($row['meta']);
-        }
+    usort($matches, static function (array $a, array $b): int {
+        $idA = isset($a['id']) ? (int)$a['id'] : 0;
+        $idB = isset($b['id']) ? (int)$b['id'] : 0;
+        return $idB <=> $idA;
+    });
 
-        $player1Id = isset($row['player1_user_id']) ? (int)$row['player1_user_id'] : 0;
-        if ($player1Id <= 0 && isset($meta['player1']) && is_array($meta['player1'])) {
-            $player1Id = stats_meta_player_id($meta['player1']) ?? 0;
-        }
+    $results = [];
+    foreach ($matches as $match) {
+        $results[] = [
+            'id' => $match['id'] ?? null,
+            'tournament_id' => $match['tournament_id'] ?? null,
+            'tournament' => $match['tournament_name'] ?? 'Tournament',
+            'opponent_id' => $match['opponent_id'] ?? null,
+            'opponent' => $match['opponent_name'] ?? 'TBD',
+            'result' => $match['result'] ?? (!empty($match['is_finished']) ? (!empty($match['is_win']) ? 'win' : 'loss') : 'pending'),
+            'is_winner' => !empty($match['is_win']),
+            'score_for' => $match['score_for'] ?? null,
+            'score_against' => $match['score_against'] ?? null,
+            'stage' => $match['stage'] ?? null,
+            'round' => $match['round'] ?? null,
+        ];
 
-        $player2Id = isset($row['player2_user_id']) ? (int)$row['player2_user_id'] : 0;
-        if ($player2Id <= 0 && isset($meta['player2']) && is_array($meta['player2'])) {
-            $player2Id = stats_meta_player_id($meta['player2']) ?? 0;
-        }
-
-        if ($player1Id !== $userId && $player2Id !== $userId) {
-            continue;
-        }
-
-        $filtered[] = $row;
-
-        if (count($filtered) >= $limit) {
+        if (count($results) >= $limit) {
             break;
         }
     }
 
-    return $filtered;
+    return $results;
 }
 
 function count_user_tournament_titles(int $userId): int

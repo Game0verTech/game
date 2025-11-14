@@ -53,45 +53,16 @@ $lossCount = isset($stats['losses']) ? (int)$stats['losses'] : 0;
 $totalMatches = isset($stats['matches_played']) ? (int)$stats['matches_played'] : ($winCount + $lossCount);
 $tournamentsPlayed = isset($stats['tournaments_played']) ? (int)$stats['tournaments_played'] : 0;
 $winRate = isset($stats['win_rate']) ? number_format((float)$stats['win_rate'], 2) : '0.00';
-$pointsFor = isset($stats['points_for']) ? (int)$stats['points_for'] : 0;
-$pointsAgainst = isset($stats['points_against']) ? (int)$stats['points_against'] : 0;
-$pointDifferential = isset($stats['point_differential']) ? (int)$stats['point_differential'] : ($pointsFor - $pointsAgainst);
-$averageMargin = isset($stats['average_margin']) ? number_format((float)$stats['average_margin'], 2) : '0.00';
-$pointDifferentialDisplay = ($pointDifferential > 0 ? '+' : '') . (string)$pointDifferential;
-$averagePointsFor = isset($stats['average_points_for']) ? number_format((float)$stats['average_points_for'], 2) : '0.00';
-$averagePointsAgainst = isset($stats['average_points_against']) ? number_format((float)$stats['average_points_against'], 2) : '0.00';
 $currentStreak = isset($stats['current_streak']) && is_array($stats['current_streak']) ? $stats['current_streak'] : ['type' => null, 'length' => 0];
 $currentStreakLabel = '—';
 if (!empty($currentStreak['type']) && !empty($currentStreak['length'])) {
     $currentStreakLabel = strtoupper(substr((string)$currentStreak['type'], 0, 1)) . (int)$currentStreak['length'];
 }
 $bestWinStreak = isset($stats['best_win_streak']) ? (int)$stats['best_win_streak'] : 0;
-$shutoutWins = isset($stats['shutout_wins']) ? (int)$stats['shutout_wins'] : 0;
-$finalsAppearances = isset($stats['finals_appearances']) ? (int)$stats['finals_appearances'] : 0;
-$runnerUpFinishes = isset($stats['runner_up_finishes']) ? (int)$stats['runner_up_finishes'] : 0;
 $pendingMatches = isset($stats['pending_matches']) ? (int)$stats['pending_matches'] : 0;
 $activeTournaments = isset($stats['tournaments_active']) ? (int)$stats['tournaments_active'] : 0;
 $completedTournaments = isset($stats['tournaments_completed']) ? (int)$stats['tournaments_completed'] : 0;
 $recentForm = isset($stats['recent_form']) && is_array($stats['recent_form']) ? $stats['recent_form'] : [];
-
-$decodeMatchMeta = static function ($meta): array {
-    if (function_exists('decode_match_meta')) {
-        return decode_match_meta($meta);
-    }
-
-    if (is_array($meta)) {
-        return $meta;
-    }
-
-    if (is_string($meta) && $meta !== '') {
-        $decoded = json_decode($meta, true);
-        if (is_array($decoded)) {
-            return $decoded;
-        }
-    }
-
-    return [];
-};
 
 $buildTournamentPayload = static function (array $tournament, array $players, bool $isRegistered) use (&$loadErrors): string {
     $playerIds = array_map(static fn($player) => (int)$player['user_id'], $players);
@@ -190,83 +161,13 @@ foreach ($userTournamentsRaw as $tournament) {
 
 $recentMatches = [];
 foreach ($recentMatchesRaw as $match) {
-    $meta = array_key_exists('meta', $match) ? $decodeMatchMeta($match['meta']) : [];
-
-    $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
-    if ($player1Id <= 0 && isset($meta['player1']) && is_array($meta['player1'])) {
-        $player1Id = stats_meta_player_id($meta['player1']) ?? 0;
-    }
-
-    $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
-    if ($player2Id <= 0 && isset($meta['player2']) && is_array($meta['player2'])) {
-        $player2Id = stats_meta_player_id($meta['player2']) ?? 0;
-    }
-
-    $side = null;
-    if ($player1Id === $user['id']) {
-        $side = 1;
-    } elseif ($player2Id === $user['id']) {
-        $side = 2;
-    }
-
-    $opponentId = $side === 1 ? $player2Id : ($side === 2 ? $player1Id : 0);
-    if ($side === null) {
-        $message = sprintf(
-            'Match %s does not reference the current user in player slots or metadata.',
-            isset($match['id']) ? (string)$match['id'] : 'unknown'
-        );
-        $loadErrors[] = $message;
-        error_log('[dashboard] ' . $message);
-        continue;
-    }
-    try {
-        $opponent = $opponentId ? get_user_by_id($opponentId) : null;
-    } catch (Throwable $e) {
-        $opponent = null;
-        $message = sprintf(
-            'Failed to load opponent details for match %s: %s',
-            isset($match['id']) ? (string)$match['id'] : 'unknown',
-            $e->getMessage()
-        );
-        $loadErrors[] = $message;
-        error_log('[dashboard] ' . $message);
-    }
-
-    $scoreFor = $side === 1 ? ($match['score1'] ?? null) : ($side === 2 ? ($match['score2'] ?? null) : null);
-    $scoreAgainst = $side === 1 ? ($match['score2'] ?? null) : ($side === 2 ? ($match['score1'] ?? null) : null);
-
-    $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : null;
-    if ($winnerId === null && isset($meta['winner']) && is_array($meta['winner'])) {
-        if (isset($meta['winner']['id']) && is_numeric($meta['winner']['id'])) {
-            $winnerId = (int)$meta['winner']['id'];
-        } elseif (isset($meta['winner']['slot'])) {
-            $slot = (int)$meta['winner']['slot'];
-            if ($slot === 1 && $player1Id > 0) {
-                $winnerId = $player1Id;
-            } elseif ($slot === 2 && $player2Id > 0) {
-                $winnerId = $player2Id;
-            }
-        }
-    }
-
-    $opponentName = $opponent['username'] ?? null;
-    if (!$opponentName) {
-        if ($side === 1 && isset($meta['player2']['name'])) {
-            $opponentName = (string)$meta['player2']['name'];
-        } elseif ($side === 2 && isset($meta['player1']['name'])) {
-            $opponentName = (string)$meta['player1']['name'];
-        }
-    }
-    if (!$opponentName) {
-        $opponentName = 'TBD';
-    }
-
     $recentMatches[] = [
-        'tournament' => $match['tournament_name'] ?? 'Tournament',
-        'opponent' => $opponentName,
-        'score_for' => $scoreFor,
-        'score_against' => $scoreAgainst,
-        'is_winner' => $winnerId !== null ? $winnerId === (int)$user['id'] : false,
+        'tournament' => $match['tournament'] ?? 'Tournament',
+        'opponent' => $match['opponent'] ?? 'TBD',
+        'score_for' => $match['score_for'] ?? null,
+        'score_against' => $match['score_against'] ?? null,
+        'is_winner' => !empty($match['is_winner']),
+        'result' => $match['result'] ?? 'pending',
         'stage' => $match['stage'] ?? null,
         'round' => $match['round'] ?? null,
     ];
@@ -329,12 +230,12 @@ $loadErrors = array_values(array_unique($loadErrors));
                 <span class="stat-card__value"><?= $bestWinStreak > 0 ? $bestWinStreak : '&mdash;' ?></span>
             </div>
             <div class="stat-card">
-                <span class="stat-card__label">Point Differential</span>
-                <span class="stat-card__value"><?= sanitize($pointDifferentialDisplay) ?></span>
+                <span class="stat-card__label">Active Tournaments</span>
+                <span class="stat-card__value"><?= $activeTournaments ?></span>
             </div>
             <div class="stat-card">
-                <span class="stat-card__label">Average Margin</span>
-                <span class="stat-card__value"><?= sanitize($averageMargin) ?></span>
+                <span class="stat-card__label">Completed Events</span>
+                <span class="stat-card__value"><?= $completedTournaments ?></span>
             </div>
         </div>
         <?php if ($recentForm): ?>
@@ -361,8 +262,17 @@ $loadErrors = array_values(array_unique($loadErrors));
                 <ul class="recent-results">
                     <?php foreach ($recentMatches as $match): ?>
                         <?php
-                            $resultLabel = $match['is_winner'] ? 'Win' : 'Loss';
-                            $resultClass = $match['is_winner'] ? 'is-win' : 'is-loss';
+                            $resultState = $match['result'] ?? 'pending';
+                            if ($resultState === 'win') {
+                                $resultLabel = 'Win';
+                                $resultClass = 'is-win';
+                            } elseif ($resultState === 'loss') {
+                                $resultLabel = 'Loss';
+                                $resultClass = 'is-loss';
+                            } else {
+                                $resultLabel = 'Pending';
+                                $resultClass = 'is-pending';
+                            }
                             $scoreReady = $match['score_for'] !== null && $match['score_against'] !== null;
                             $stage = $match['stage'] ? strtoupper($match['stage']) : null;
                             $round = $match['round'] ? 'Round ' . (int)$match['round'] : null;
@@ -442,32 +352,8 @@ $loadErrors = array_values(array_unique($loadErrors));
             <h2>Performance Highlights</h2>
             <dl class="insight-grid">
                 <div class="insight-grid__item">
-                    <dt>Points For</dt>
-                    <dd><?= sanitize((string)$pointsFor) ?></dd>
-                </div>
-                <div class="insight-grid__item">
-                    <dt>Points Against</dt>
-                    <dd><?= sanitize((string)$pointsAgainst) ?></dd>
-                </div>
-                <div class="insight-grid__item">
-                    <dt>Average Points For</dt>
-                    <dd><?= sanitize($averagePointsFor) ?></dd>
-                </div>
-                <div class="insight-grid__item">
-                    <dt>Average Points Against</dt>
-                    <dd><?= sanitize($averagePointsAgainst) ?></dd>
-                </div>
-                <div class="insight-grid__item">
-                    <dt>Shutout Wins</dt>
-                    <dd><?= sanitize((string)$shutoutWins) ?></dd>
-                </div>
-                <div class="insight-grid__item">
-                    <dt>Finals Appearances</dt>
-                    <dd><?= sanitize((string)$finalsAppearances) ?></dd>
-                </div>
-                <div class="insight-grid__item">
-                    <dt>Runner-up Finishes</dt>
-                    <dd><?= sanitize((string)$runnerUpFinishes) ?></dd>
+                    <dt>Tournament Wins</dt>
+                    <dd><?= sanitize((string)$tournamentWins) ?></dd>
                 </div>
                 <div class="insight-grid__item">
                     <dt>Active Tournaments</dt>
@@ -476,6 +362,10 @@ $loadErrors = array_values(array_unique($loadErrors));
                 <div class="insight-grid__item">
                     <dt>Completed Events</dt>
                     <dd><?= sanitize((string)$completedTournaments) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Pending Matches</dt>
+                    <dd><?= sanitize((string)$pendingMatches) ?></dd>
                 </div>
             </dl>
         </section>
