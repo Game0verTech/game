@@ -44,6 +44,29 @@ function is_post(): bool
     return $_SERVER['REQUEST_METHOD'] === 'POST';
 }
 
+function is_ajax_request(): bool
+{
+    $requestedWith = $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '';
+    if (is_string($requestedWith) && strtolower($requestedWith) === 'xmlhttprequest') {
+        return true;
+    }
+
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    if (is_string($accept) && stripos($accept, 'application/json') !== false) {
+        return true;
+    }
+
+    return false;
+}
+
+function json_response(array $payload, int $statusCode = 200): void
+{
+    http_response_code($statusCode);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($payload);
+    exit;
+}
+
 function sanitize(string $value): string
 {
     return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

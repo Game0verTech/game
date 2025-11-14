@@ -43,6 +43,474 @@ $(function () {
         });
     }
 
+    function clamp(value, min, max) {
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
+    }
+
+    function initIconEditor() {
+        var forms = $('.js-icon-editor-form');
+        if (!forms.length) {
+            return;
+        }
+
+        forms.each(function () {
+            var form = $(this);
+            var fileInput = form.find('.js-icon-editor-input');
+            var viewport = form.find('.js-icon-editor-viewport');
+            var image = form.find('.js-icon-editor-image');
+            var preview = form.find('.js-icon-editor-preview');
+            var zoomSlider = form.find('.js-icon-editor-zoom');
+            var resetButton = form.find('.js-icon-editor-reset');
+            var workspace = form.find('.icon-editor__workspace');
+            var progress = form.find('.js-upload-progress');
+            var progressBar = form.find('.js-upload-progress-bar');
+            var saveButton = form.find('.js-icon-editor-save');
+            var feedback = form.find('.js-icon-editor-feedback');
+            var hiddenX = form.find('input[name="crop_x"]');
+            var hiddenY = form.find('input[name="crop_y"]');
+            var hiddenSize = form.find('input[name="crop_size"]');
+            var hiddenWidth = form.find('input[name="image_width"]');
+            var hiddenHeight = form.find('input[name="image_height"]');
+            var currentPreview = $('.js-current-icon');
+            var headerAvatar = $('.js-current-user-avatar');
+            var viewportSize = toInteger(viewport.data('size'), 256);
+            if (!viewportSize || viewportSize < 50) {
+                viewportSize = 256;
+            }
+
+            var supportsAdvanced = !!window.FileReader && !!window.FormData;
+            if (!supportsAdvanced) {
+                return;
+            }
+
+            var canvas = document.createElement('canvas');
+            if (!canvas.getContext) {
+                return;
+            }
+
+            canvas.width = 256;
+            canvas.height = 256;
+
+            var state = {
+                hasImage: false,
+                baseScale: 1,
+                zoom: 1,
+                offsetX: 0,
+                offsetY: 0,
+                naturalWidth: 0,
+                naturalHeight: 0,
+                dragStartX: 0,
+                dragStartY: 0,
+                startOffsetX: 0,
+                startOffsetY: 0,
+                pointerId: null,
+                dragging: false,
+                renderImage: null
+            };
+
+            function setFeedback(message, type) {
+                if (!feedback.length) {
+                    return;
+                }
+                feedback.removeClass('is-success is-error');
+                if (type === 'success') {
+                    feedback.addClass('is-success');
+                } else if (type === 'error') {
+                    feedback.addClass('is-error');
+                }
+                feedback.text(message || '');
+            }
+
+            function setUploading(isUploading) {
+                if (isUploading) {
+                    progress.removeAttr('hidden');
+                    progressBar.css('width', '0%');
+                } else {
+                    progress.attr('hidden', 'hidden');
+                    progressBar.css('width', '0%');
+                }
+                fileInput.prop('disabled', isUploading);
+                zoomSlider.prop('disabled', isUploading);
+                resetButton.prop('disabled', isUploading);
+                saveButton.prop('disabled', isUploading || !state.hasImage);
+            }
+
+            function getScaledWidth() {
+                return state.naturalWidth * state.baseScale * state.zoom;
+            }
+
+            function getScaledHeight() {
+                return state.naturalHeight * state.baseScale * state.zoom;
+            }
+
+            function clampOffsets() {
+                var width = getScaledWidth();
+                var height = getScaledHeight();
+                var minX;
+                var maxX;
+                var minY;
+                var maxY;
+
+                if (width <= viewportSize) {
+                    minX = maxX = (viewportSize - width) / 2;
+                } else {
+                    minX = viewportSize - width;
+                    maxX = 0;
+                }
+
+                if (height <= viewportSize) {
+                    minY = maxY = (viewportSize - height) / 2;
+                } else {
+                    minY = viewportSize - height;
+                    maxY = 0;
+                }
+
+                state.offsetX = clamp(state.offsetX, minX, maxX);
+                state.offsetY = clamp(state.offsetY, minY, maxY);
+            }
+
+            function centerImage() {
+                var width = getScaledWidth();
+                var height = getScaledHeight();
+                state.offsetX = (viewportSize - width) / 2;
+                state.offsetY = (viewportSize - height) / 2;
+                clampOffsets();
+            }
+
+            function updateImageTransform() {
+                image.css({
+                    width: getScaledWidth() + 'px',
+                    height: getScaledHeight() + 'px',
+                    left: state.offsetX + 'px',
+                    top: state.offsetY + 'px'
+                });
+            }
+
+            function computeCrop() {
+                if (!state.renderImage || !state.baseScale || !state.zoom) {
+                    return null;
+                }
+                var displayScale = state.baseScale * state.zoom;
+                if (!displayScale) {
+                    return null;
+                }
+
+                var cropSize = viewportSize / displayScale;
+                if (!isFinite(cropSize) || cropSize <= 0) {
+                    return null;
+                }
+
+                var cropX = -state.offsetX / displayScale;
+                var cropY = -state.offsetY / displayScale;
+                var maxX = Math.max(0, state.naturalWidth - cropSize);
+                var maxY = Math.max(0, state.naturalHeight - cropSize);
+
+                cropX = clamp(cropX, 0, maxX);
+                cropY = clamp(cropY, 0, maxY);
+                cropSize = Math.min(cropSize, state.naturalWidth, state.naturalHeight);
+
+                return {
+                    x: cropX,
+                    y: cropY,
+                    size: cropSize
+                };
+            }
+
+            function updateHiddenInputs(crop) {
+                if (!crop) {
+                    hiddenX.val('');
+                    hiddenY.val('');
+                    hiddenSize.val('');
+                    return;
+                }
+
+                hiddenX.val(crop.x.toFixed(2));
+                hiddenY.val(crop.y.toFixed(2));
+                hiddenSize.val(crop.size.toFixed(2));
+                hiddenWidth.val(state.naturalWidth);
+                hiddenHeight.val(state.naturalHeight);
+            }
+
+            function updatePreview() {
+                if (!state.renderImage) {
+                    return;
+                }
+                var crop = computeCrop();
+                if (!crop) {
+                    return;
+                }
+                var context = canvas.getContext('2d');
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                context.drawImage(state.renderImage, crop.x, crop.y, crop.size, crop.size, 0, 0, canvas.width, canvas.height);
+                var dataUrl = canvas.toDataURL('image/png');
+                preview.attr('src', dataUrl);
+            }
+
+            function resetWorkspace() {
+                state.renderImage = null;
+                state.hasImage = false;
+                state.baseScale = 1;
+                state.zoom = 1;
+                state.offsetX = 0;
+                state.offsetY = 0;
+                state.pointerId = null;
+                state.dragging = false;
+                image.attr('src', '');
+                workspace.attr('hidden', 'hidden');
+                zoomSlider.val('1');
+                hiddenX.val('');
+                hiddenY.val('');
+                hiddenSize.val('');
+                hiddenWidth.val('');
+                hiddenHeight.val('');
+                saveButton.prop('disabled', true);
+                progress.attr('hidden', 'hidden');
+                progressBar.css('width', '0%');
+                viewport.removeClass('is-dragging');
+            }
+
+            function refreshAfterChange() {
+                clampOffsets();
+                updateImageTransform();
+                var crop = computeCrop();
+                updateHiddenInputs(crop);
+                updatePreview();
+            }
+
+            resetWorkspace();
+
+            fileInput.on('change', function () {
+                var files = this.files;
+                if (!files || !files.length) {
+                    return;
+                }
+                var file = files[0];
+                if (!file || !file.type || !/^image\//i.test(file.type)) {
+                    setFeedback('Please choose a valid image file.', 'error');
+                    return;
+                }
+
+                setFeedback('Loading image…');
+                resetWorkspace();
+                var reader = new FileReader();
+
+                reader.onload = function (event) {
+                    var dataUrl = event.target && event.target.result;
+                    if (!dataUrl) {
+                        setFeedback('Unable to read the selected file.', 'error');
+                        return;
+                    }
+                    var img = new Image();
+                    img.onload = function () {
+                        state.renderImage = img;
+                        state.naturalWidth = img.naturalWidth || img.width || 0;
+                        state.naturalHeight = img.naturalHeight || img.height || 0;
+                        if (!state.naturalWidth || !state.naturalHeight) {
+                            setFeedback('Unable to read the selected image.', 'error');
+                            return;
+                        }
+
+                        state.baseScale = viewportSize / Math.min(state.naturalWidth, state.naturalHeight);
+                        if (!isFinite(state.baseScale) || state.baseScale <= 0) {
+                            state.baseScale = 1;
+                        }
+
+                        state.zoom = 1;
+                        zoomSlider.attr('min', '1');
+                        zoomSlider.attr('max', '4');
+                        zoomSlider.val('1');
+                        hiddenWidth.val(state.naturalWidth);
+                        hiddenHeight.val(state.naturalHeight);
+
+                        image.attr('src', dataUrl);
+                        state.hasImage = true;
+                        centerImage();
+                        refreshAfterChange();
+                        workspace.removeAttr('hidden');
+                        saveButton.prop('disabled', false);
+                        setFeedback('Drag to reposition your icon and use the zoom slider to fine tune the crop.', 'info');
+                    };
+                    img.onerror = function () {
+                        setFeedback('Unable to load that image. Try a different file.', 'error');
+                    };
+                    img.src = dataUrl;
+                };
+
+                reader.onerror = function () {
+                    setFeedback('Unable to read the selected file.', 'error');
+                };
+
+                reader.readAsDataURL(file);
+            });
+
+            viewport.on('pointerdown', function (event) {
+                if (!state.hasImage) {
+                    return;
+                }
+                event.preventDefault();
+                state.dragging = true;
+                state.pointerId = event.pointerId;
+                state.dragStartX = event.clientX;
+                state.dragStartY = event.clientY;
+                state.startOffsetX = state.offsetX;
+                state.startOffsetY = state.offsetY;
+                if (this.setPointerCapture && state.pointerId !== null) {
+                    this.setPointerCapture(state.pointerId);
+                }
+                viewport.addClass('is-dragging');
+            });
+
+            viewport.on('pointermove', function (event) {
+                if (!state.dragging) {
+                    return;
+                }
+                var deltaX = event.clientX - state.dragStartX;
+                var deltaY = event.clientY - state.dragStartY;
+                state.offsetX = state.startOffsetX + deltaX;
+                state.offsetY = state.startOffsetY + deltaY;
+                refreshAfterChange();
+            });
+
+            function stopDragging(element) {
+                if (!state.dragging) {
+                    return;
+                }
+                state.dragging = false;
+                if (state.pointerId !== null && element && element.releasePointerCapture) {
+                    try {
+                        element.releasePointerCapture(state.pointerId);
+                    } catch (err) {
+                        // ignore
+                    }
+                }
+                state.pointerId = null;
+                viewport.removeClass('is-dragging');
+            }
+
+            viewport.on('pointerup pointercancel pointerleave', function () {
+                stopDragging(this);
+            });
+
+            zoomSlider.on('input change', function () {
+                if (!state.hasImage) {
+                    return;
+                }
+                var newZoom = parseFloat(this.value);
+                if (!isFinite(newZoom) || newZoom <= 0) {
+                    newZoom = 1;
+                }
+                var oldZoom = state.zoom;
+                if (!isFinite(oldZoom) || oldZoom <= 0) {
+                    oldZoom = 1;
+                }
+                if (Math.abs(newZoom - oldZoom) < 0.0001) {
+                    return;
+                }
+
+                var oldWidth = getScaledWidth();
+                var oldHeight = getScaledHeight();
+                var centerX = viewportSize / 2;
+                var centerY = viewportSize / 2;
+                var relX = oldWidth ? (centerX - state.offsetX) / oldWidth : 0.5;
+                var relY = oldHeight ? (centerY - state.offsetY) / oldHeight : 0.5;
+
+                state.zoom = newZoom;
+                var newWidth = getScaledWidth();
+                var newHeight = getScaledHeight();
+                state.offsetX = centerX - relX * newWidth;
+                state.offsetY = centerY - relY * newHeight;
+                refreshAfterChange();
+            });
+
+            resetButton.on('click', function (event) {
+                event.preventDefault();
+                if (!state.hasImage) {
+                    return;
+                }
+                state.zoom = 1;
+                zoomSlider.val('1');
+                centerImage();
+                refreshAfterChange();
+            });
+
+            form.on('submit', function (event) {
+                event.preventDefault();
+                if (!state.hasImage) {
+                    setFeedback('Choose an image and adjust the crop before saving.', 'error');
+                    return;
+                }
+
+                var crop = computeCrop();
+                updateHiddenInputs(crop);
+
+                var formData = new FormData(form[0]);
+                setUploading(true);
+                setFeedback('Uploading icon…');
+
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', form.attr('action') || window.location.href, true);
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+                xhr.upload.onprogress = function (progressEvent) {
+                    if (!progressEvent.lengthComputable) {
+                        return;
+                    }
+                    var percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+                    percent = clamp(percent, 0, 100);
+                    progressBar.css('width', percent + '%');
+                };
+
+                xhr.onerror = function () {
+                    setUploading(false);
+                    if (state.hasImage) {
+                        saveButton.prop('disabled', false);
+                    }
+                    setFeedback('Network error while uploading icon. Please try again.', 'error');
+                };
+
+                xhr.onload = function () {
+                    setUploading(false);
+                    var response = null;
+                    try {
+                        response = JSON.parse(xhr.responseText || '{}');
+                    } catch (err) {
+                        response = null;
+                    }
+
+                    if (xhr.status >= 200 && xhr.status < 300 && response && response.status === 'success') {
+                        var iconUrl = response.iconUrl || '';
+                        if (iconUrl) {
+                            var cacheBuster = iconUrl.indexOf('?') === -1 ? '?v=' + Date.now() : '&v=' + Date.now();
+                            var bustedUrl = iconUrl + cacheBuster;
+                            preview.attr('src', bustedUrl);
+                            currentPreview.attr('src', bustedUrl);
+                            headerAvatar.attr('src', bustedUrl);
+                        }
+                        setFeedback(response.message || 'Your icon has been updated.', 'success');
+                        resetWorkspace();
+                    } else {
+                        if (response && response.message) {
+                            setFeedback(response.message, 'error');
+                        } else {
+                            setFeedback('Unable to update your icon. Please try again.', 'error');
+                        }
+                        if (state.hasImage) {
+                            saveButton.prop('disabled', false);
+                        }
+                    }
+                };
+
+                xhr.send(formData);
+            });
+        });
+    }
+
     function parseJsonPayload(container, key) {
         var cached = container.data(key);
         if (cached && typeof cached !== 'string') {
@@ -3503,5 +3971,6 @@ $(function () {
         renderSelectedPlayers($('#tournamentSettingsModal'));
     });
 
+    initIconEditor();
     initUserMenu();
 });

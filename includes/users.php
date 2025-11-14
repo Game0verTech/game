@@ -378,7 +378,77 @@ function update_user_public_profile(int $userId, string $about, array $gamerTags
     ];
 }
 
-function update_user_icon(int $userId, array $file): string
+function normalize_icon_crop_request(array $request, int $imageWidth, int $imageHeight): ?array
+{
+    $rawX = $request['crop_x'] ?? null;
+    $rawY = $request['crop_y'] ?? null;
+    $rawSize = $request['crop_size'] ?? null;
+
+    if ($rawX === null || $rawY === null || $rawSize === null) {
+        return null;
+    }
+
+    if ($rawX === '' || $rawY === '' || $rawSize === '') {
+        return null;
+    }
+
+    if (!is_numeric($rawX) || !is_numeric($rawY) || !is_numeric($rawSize)) {
+        return null;
+    }
+
+    $expectedWidth = $request['image_width'] ?? null;
+    $expectedHeight = $request['image_height'] ?? null;
+
+    if (is_numeric($expectedWidth)) {
+        $expectedWidth = (int)round((float)$expectedWidth);
+        if (abs($expectedWidth - $imageWidth) > 2) {
+            return null;
+        }
+    }
+
+    if (is_numeric($expectedHeight)) {
+        $expectedHeight = (int)round((float)$expectedHeight);
+        if (abs($expectedHeight - $imageHeight) > 2) {
+            return null;
+        }
+    }
+
+    $size = (float)$rawSize;
+    if ($size <= 0) {
+        return null;
+    }
+
+    $maxSize = min($imageWidth, $imageHeight);
+    $size = min($size, $maxSize);
+
+    $x = max(0.0, (float)$rawX);
+    $y = max(0.0, (float)$rawY);
+
+    if ($x > $imageWidth) {
+        $x = (float)$imageWidth;
+    }
+    if ($y > $imageHeight) {
+        $y = (float)$imageHeight;
+    }
+
+    if ($x + $size > $imageWidth) {
+        $x = (float)($imageWidth - $size);
+    }
+    if ($y + $size > $imageHeight) {
+        $y = (float)($imageHeight - $size);
+    }
+
+    $x = max(0.0, $x);
+    $y = max(0.0, $y);
+
+    return [
+        'x' => $x,
+        'y' => $y,
+        'size' => $size,
+    ];
+}
+
+function update_user_icon(int $userId, array $file, array $request = []): string
 {
     ensure_user_profile_record($userId);
 
@@ -432,31 +502,66 @@ function update_user_icon(int $userId, array $file): string
 
     $width = imagesx($source);
     $height = imagesy($source);
-    $cropSize = min($width, $height);
-    $srcX = (int)max(0, ($width - $cropSize) / 2);
-    $srcY = (int)max(0, ($height - $cropSize) / 2);
+
+    $crop = normalize_icon_crop_request($request, $width, $height);
+    if ($crop) {
+        $cropSize = max(1, (int)round($crop['size']));
+        $srcX = max(0, (int)round($crop['x']));
+        $srcY = max(0, (int)round($crop['y']));
+    } else {
+        $cropSize = min($width, $height);
+        $srcX = (int)max(0, ($width - $cropSize) / 2);
+        $srcY = (int)max(0, ($height - $cropSize) / 2);
+    }
+
+    if ($cropSize < 1) {
+        imagedestroy($source);
+        throw new RuntimeException('Failed to determine crop size.');
+    }
 
     $targetSize = 256;
     $target = imagecreatetruecolor($targetSize, $targetSize);
     imagealphablending($target, false);
+    $transparent = imagecolorallocatealpha($target, 0, 0, 0, 127);
+    imagefilledrectangle($target, 0, 0, $targetSize, $targetSize, $transparent);
     imagesavealpha($target, true);
     imagecopyresampled($target, $source, 0, 0, $srcX, $srcY, $targetSize, $targetSize, $cropSize, $cropSize);
 
-    $directory = user_icon_directory();
-    $filename = 'user_' . $userId . '_' . bin2hex(random_bytes(6)) . '.png';
-    $fullPath = $directory . DIRECTORY_SEPARATOR . $filename;
+    if (function_exists('imagepalettetotruecolor')) {
+        imagepalettetotruecolor($target);
+    }
 
-    if (!imagepng($target, $fullPath)) {
-        imagedestroy($source);
-        imagedestroy($target);
-        throw new RuntimeException('Failed to save resized icon.');
+    $directory = user_icon_directory();
+    $basename = 'user_' . $userId . '_' . bin2hex(random_bytes(6));
+    $relativePath = null;
+    $saved = false;
+
+    if (function_exists('imagewebp')) {
+        $webpFilename = $basename . '.webp';
+        $webpPath = $directory . DIRECTORY_SEPARATOR . $webpFilename;
+        $saved = imagewebp($target, $webpPath, 88);
+        if ($saved) {
+            $relativePath = 'assets/user-icons/' . $webpFilename;
+        }
+    }
+
+    if (!$saved) {
+        $pngFilename = $basename . '.png';
+        $pngPath = $directory . DIRECTORY_SEPARATOR . $pngFilename;
+        $saved = imagepng($target, $pngPath, 7);
+        if ($saved) {
+            $relativePath = 'assets/user-icons/' . $pngFilename;
+        }
     }
 
     imagedestroy($source);
     imagedestroy($target);
 
-    $relativePath = 'assets/user-icons/' . $filename;
-    $publicPath = '/' . $relativePath;
+    if (!$saved || !$relativePath) {
+        throw new RuntimeException('Failed to save resized icon.');
+    }
+
+    $publicPath = '/' . ltrim($relativePath, '/');
 
     $profile = get_user_profile($userId);
     $previous = $profile['icon_path'] ?? null;

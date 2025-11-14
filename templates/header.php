@@ -53,7 +53,7 @@ $navCurrentPage = $_GET['page'] ?? ($user ? 'dashboard' : 'home');
                 <div class="user-menu js-user-menu">
                     <button class="user-menu__trigger" type="button" aria-haspopup="true" aria-expanded="false">
                         <span class="user-menu__avatar" aria-hidden="true">
-                            <img src="<?= sanitize($menuIcon) ?>" alt="" loading="lazy">
+                            <img class="js-current-user-avatar" src="<?= sanitize($menuIcon) ?>" alt="" loading="lazy">
                         </span>
                         <span class="user-menu__name"><?= sanitize($menuLabel) ?></span>
                         <span class="user-menu__caret" aria-hidden="true">▾</span>

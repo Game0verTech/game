@@ -171,7 +171,7 @@ a:focus-visible {
     pointer-events: none;
     transform: translateY(-6px);
     transition: opacity 0.18s ease, transform 0.18s ease;
-    z-index: 60;
+    z-index: 2000;
 }
 
 .user-menu.is-open .user-menu__dropdown {
@@ -782,6 +782,167 @@ form button:not(.btn):focus-visible {
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+.icon-editor {
+    margin-top: 24px;
+    display: grid;
+    gap: 20px;
+}
+
+.icon-editor__upload {
+    display: grid;
+    gap: 10px;
+}
+
+.icon-editor__file-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 18px;
+    border-radius: 10px;
+    border: 1px dashed rgba(255, 255, 255, 0.18);
+    background: rgba(10, 18, 30, 0.75);
+    color: var(--text-secondary);
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.icon-editor__file-label:hover,
+.icon-editor__file-label:focus-visible {
+    border-color: rgba(30, 144, 255, 0.55);
+    color: var(--text-primary);
+    background: rgba(12, 24, 40, 0.9);
+}
+
+.icon-editor__file-label input[type="file"] {
+    display: none;
+}
+
+.icon-editor__workspace {
+    display: grid;
+    gap: 20px;
+}
+
+.icon-editor__stage {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.icon-editor__viewport {
+    position: relative;
+    width: 256px;
+    height: 256px;
+    border-radius: 22px;
+    overflow: hidden;
+    background: rgba(8, 16, 28, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin: 0 auto;
+    touch-action: none;
+    cursor: grab;
+}
+
+.icon-editor__viewport.is-dragging {
+    cursor: grabbing;
+}
+
+.icon-editor__image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    will-change: transform;
+}
+
+.icon-editor__viewport::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(transparent 24px, rgba(255, 255, 255, 0.08) 24px),
+        linear-gradient(90deg, transparent 24px, rgba(255, 255, 255, 0.08) 24px);
+    background-size: 48px 48px;
+    mix-blend-mode: screen;
+}
+
+.icon-editor__preview {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+}
+
+.icon-editor__preview-label {
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.icon-editor__preview-image {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 2px solid rgba(30, 144, 255, 0.35);
+    box-shadow: 0 12px 24px rgba(5, 12, 24, 0.45);
+    object-fit: cover;
+    background: rgba(12, 21, 36, 0.85);
+}
+
+.icon-editor__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.icon-editor__control-label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.icon-editor__zoom {
+    flex: 1 1 auto;
+    accent-color: rgba(30, 144, 255, 0.85);
+}
+
+.icon-editor__progress {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+
+.icon-editor__progress-bar {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, rgba(30, 144, 255, 0.65), rgba(144, 238, 144, 0.85));
+    transition: width 0.2s ease;
+}
+
+.icon-editor__feedback {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.icon-editor__feedback.is-success {
+    color: #6bd69f;
+}
+
+.icon-editor__feedback.is-error {
+    color: #ff6b6b;
+}
+
+@media (min-width: 720px) {
+    .icon-editor__stage {
+        grid-template-columns: 1fr 180px;
+        align-items: center;
+    }
 }
 
 .profile-page {
