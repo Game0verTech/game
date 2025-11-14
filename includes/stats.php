@@ -51,6 +51,11 @@ function stats_decode_match_meta($meta): array
     return [];
 }
 
+function stats_escape_like(string $value): string
+{
+    return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+}
+
 function stats_lookup_user_id_by_name(string $name): ?int
 {
     static $cache = [];
@@ -144,48 +149,47 @@ function stats_build_user_match_filter(int $userId): array
     ];
 
     $userIdStr = (string)$userId;
+    $quote = chr(34);
 
-    $idRegexes = [
-        ':meta_player1_id' => '\\"player1\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_player2_id' => '\\"player2\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_player1_user_id' => '\\"player1\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_player2_user_id' => '\\"player2\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_player1_player_id' => '\\"player1\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_player2_player_id' => '\\"player2\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_winner_id' => '\\"winner\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_winner_user_id' => '\\"winner\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-        ':meta_winner_player_id' => '\\"winner\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
-    ];
+    if ($userId > 0) {
+        $metaKeys = ['id', 'user_id', 'player_id'];
+        foreach ($metaKeys as $key) {
+            $placeholderBase = ':meta_' . str_replace('_', '', $key);
+            $placeholderInt = $placeholderBase . '_int';
+            $placeholderStr = $placeholderBase . '_str';
 
-    foreach ($idRegexes as $placeholder => $pattern) {
-        $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) REGEXP ' . $placeholder . ')';
-        $bindings[] = [
-            'name' => $placeholder,
-            'value' => $pattern,
-            'type' => PDO::PARAM_STR,
-        ];
+            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderInt . " ESCAPE '\\')";
+            $bindings[] = [
+                'name' => $placeholderInt,
+                'value' => '%' . stats_escape_like($quote . $key . $quote . ':' . $userIdStr) . '%',
+                'type' => PDO::PARAM_STR,
+            ];
+
+            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderStr . " ESCAPE '\\')";
+            $bindings[] = [
+                'name' => $placeholderStr,
+                'value' => '%' . stats_escape_like($quote . $key . $quote . ':' . $quote . $userIdStr . $quote) . '%',
+                'type' => PDO::PARAM_STR,
+            ];
+        }
     }
 
     $username = stats_resolve_username($userId);
     if ($username !== null) {
         $usernameLower = strtolower($username);
-        $escapedUsername = addcslashes($usernameLower, '\\"');
-        $nameRegexes = [
-            ':meta_player1_username' => '\\"player1\\"[^}]*\\"username\\":\\"' . $escapedUsername . '\\"',
-            ':meta_player2_username' => '\\"player2\\"[^}]*\\"username\\":\\"' . $escapedUsername . '\\"',
-            ':meta_player1_name' => '\\"player1\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
-            ':meta_player2_name' => '\\"player2\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
-            ':meta_winner_name' => '\\"winner\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
+        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_username ESCAPE \'\\\')';
+        $bindings[] = [
+            'name' => ':meta_username',
+            'value' => '%' . stats_escape_like($quote . 'username' . $quote . ':' . $quote . $usernameLower . $quote) . '%',
+            'type' => PDO::PARAM_STR,
         ];
 
-        foreach ($nameRegexes as $placeholder => $pattern) {
-            $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) REGEXP ' . $placeholder . ')';
-            $bindings[] = [
-                'name' => $placeholder,
-                'value' => strtolower($pattern),
-                'type' => PDO::PARAM_STR,
-            ];
-        }
+        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_name ESCAPE \'\\\')';
+        $bindings[] = [
+            'name' => ':meta_name',
+            'value' => '%' . stats_escape_like($quote . 'name' . $quote . ':' . $quote . $usernameLower . $quote) . '%',
+            'type' => PDO::PARAM_STR,
+        ];
     }
 
     return [
@@ -524,6 +528,10 @@ function get_user_stat(int $userId): ?array
 
 function recent_results(int $userId, int $limit = 5): array
 {
+    if ($limit <= 0) {
+        return [];
+    }
+
     $filter = stats_build_user_match_filter($userId);
     $sql = 'SELECT tm.*, t.name as tournament_name
             FROM tournament_matches tm
@@ -536,7 +544,8 @@ function recent_results(int $userId, int $limit = 5): array
         $type = $binding['type'] ?? PDO::PARAM_STR;
         $stmt->bindValue($binding['name'], $binding['value'], $type);
     }
-    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $fetchLimit = max($limit * 5, $limit + 5);
+    $stmt->bindValue(':limit', $fetchLimit, PDO::PARAM_INT);
     $stmt->execute();
 
     $rows = $stmt->fetchAll();
@@ -558,7 +567,39 @@ function recent_results(int $userId, int $limit = 5): array
         $unique[] = $row;
     }
 
-    return $unique;
+    if (!$unique) {
+        return [];
+    }
+
+    $filtered = [];
+    foreach ($unique as $row) {
+        $meta = [];
+        if (array_key_exists('meta', $row)) {
+            $meta = stats_decode_match_meta($row['meta']);
+        }
+
+        $player1Id = isset($row['player1_user_id']) ? (int)$row['player1_user_id'] : 0;
+        if ($player1Id <= 0 && isset($meta['player1']) && is_array($meta['player1'])) {
+            $player1Id = stats_meta_player_id($meta['player1']) ?? 0;
+        }
+
+        $player2Id = isset($row['player2_user_id']) ? (int)$row['player2_user_id'] : 0;
+        if ($player2Id <= 0 && isset($meta['player2']) && is_array($meta['player2'])) {
+            $player2Id = stats_meta_player_id($meta['player2']) ?? 0;
+        }
+
+        if ($player1Id !== $userId && $player2Id !== $userId) {
+            continue;
+        }
+
+        $filtered[] = $row;
+
+        if (count($filtered) >= $limit) {
+            break;
+        }
+    }
+
+    return $filtered;
 }
 
 function count_user_tournament_titles(int $userId): int
