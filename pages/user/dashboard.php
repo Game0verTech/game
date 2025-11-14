@@ -74,6 +74,43 @@ $activeTournaments = isset($stats['tournaments_active']) ? (int)$stats['tourname
 $completedTournaments = isset($stats['tournaments_completed']) ? (int)$stats['tournaments_completed'] : 0;
 $recentForm = isset($stats['recent_form']) && is_array($stats['recent_form']) ? $stats['recent_form'] : [];
 
+$decodeMatchMeta = static function ($meta): array {
+    if (function_exists('decode_match_meta')) {
+        return decode_match_meta($meta);
+    }
+
+    if (is_array($meta)) {
+        return $meta;
+    }
+
+    if (is_string($meta) && $meta !== '') {
+        $decoded = json_decode($meta, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
+
+    return [];
+};
+
+$metaPlayerId = static function (?array $meta): ?int {
+    if (!$meta) {
+        return null;
+    }
+
+    if (isset($meta['id']) && is_numeric($meta['id'])) {
+        $id = (int)$meta['id'];
+        return $id > 0 ? $id : null;
+    }
+
+    if (isset($meta['player_id']) && is_numeric($meta['player_id'])) {
+        $id = (int)$meta['player_id'];
+        return $id > 0 ? $id : null;
+    }
+
+    return null;
+};
+
 $buildTournamentPayload = static function (array $tournament, array $players, bool $isRegistered) use (&$loadErrors): string {
     $playerIds = array_map(static fn($player) => (int)$player['user_id'], $players);
     $playerRoster = array_map(
@@ -171,14 +208,25 @@ foreach ($userTournamentsRaw as $tournament) {
 
 $recentMatches = [];
 foreach ($recentMatchesRaw as $match) {
+    $meta = array_key_exists('meta', $match) ? $decodeMatchMeta($match['meta']) : [];
+
     $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
+    if ($player1Id <= 0 && isset($meta['player1']) && is_array($meta['player1'])) {
+        $player1Id = $metaPlayerId($meta['player1']) ?? 0;
+    }
+
     $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
+    if ($player2Id <= 0 && isset($meta['player2']) && is_array($meta['player2'])) {
+        $player2Id = $metaPlayerId($meta['player2']) ?? 0;
+    }
+
     $side = null;
     if ($player1Id === $user['id']) {
         $side = 1;
     } elseif ($player2Id === $user['id']) {
         $side = 2;
     }
+
     $opponentId = $side === 1 ? $player2Id : ($side === 2 ? $player1Id : 0);
     try {
         $opponent = $opponentId ? get_user_by_id($opponentId) : null;
@@ -192,14 +240,42 @@ foreach ($recentMatchesRaw as $match) {
         $loadErrors[] = $message;
         error_log('[dashboard] ' . $message);
     }
+
     $scoreFor = $side === 1 ? ($match['score1'] ?? null) : ($side === 2 ? ($match['score2'] ?? null) : null);
     $scoreAgainst = $side === 1 ? ($match['score2'] ?? null) : ($side === 2 ? ($match['score1'] ?? null) : null);
+
+    $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : null;
+    if ($winnerId === null && isset($meta['winner']) && is_array($meta['winner'])) {
+        if (isset($meta['winner']['id']) && is_numeric($meta['winner']['id'])) {
+            $winnerId = (int)$meta['winner']['id'];
+        } elseif (isset($meta['winner']['slot'])) {
+            $slot = (int)$meta['winner']['slot'];
+            if ($slot === 1 && $player1Id > 0) {
+                $winnerId = $player1Id;
+            } elseif ($slot === 2 && $player2Id > 0) {
+                $winnerId = $player2Id;
+            }
+        }
+    }
+
+    $opponentName = $opponent['username'] ?? null;
+    if (!$opponentName) {
+        if ($side === 1 && isset($meta['player2']['name'])) {
+            $opponentName = (string)$meta['player2']['name'];
+        } elseif ($side === 2 && isset($meta['player1']['name'])) {
+            $opponentName = (string)$meta['player1']['name'];
+        }
+    }
+    if (!$opponentName) {
+        $opponentName = 'TBD';
+    }
+
     $recentMatches[] = [
         'tournament' => $match['tournament_name'] ?? 'Tournament',
-        'opponent' => $opponent['username'] ?? 'TBD',
+        'opponent' => $opponentName,
         'score_for' => $scoreFor,
         'score_against' => $scoreAgainst,
-        'is_winner' => isset($match['winner_user_id']) ? (int)$match['winner_user_id'] === $user['id'] : false,
+        'is_winner' => $winnerId !== null ? $winnerId === (int)$user['id'] : false,
         'stage' => $match['stage'] ?? null,
         'round' => $match['round'] ?? null,
     ];
