@@ -394,6 +394,27 @@ function round_robin_group_matches_complete(array $matchRecords): bool
     return $hasRealMatch;
 }
 
+function tournament_matches_complete(array $matches, string $type): bool
+{
+    foreach ($matches as $match) {
+        $player1 = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
+        $player2 = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
+
+        if ($player1 > 0 && $player2 > 0) {
+            $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : 0;
+            if ($winnerId <= 0) {
+                return false;
+            }
+        }
+    }
+
+    if ($type === 'round-robin') {
+        return round_robin_group_matches_complete($matches);
+    }
+
+    return true;
+}
+
 function compute_round_robin_standings(array $players, array $matchRecords): array
 {
     $stats = [];
@@ -1140,6 +1161,7 @@ function build_round_robin_groups(array $players, array $matchRecords = []): arr
 
     $leaders = round_robin_leaders($standings);
 
+    $groupComplete = round_robin_group_matches_complete($matchRecords);
     $meta = [
         'format' => 'round-robin',
         'rounds' => $roundCount,
@@ -1148,28 +1170,28 @@ function build_round_robin_groups(array $players, array $matchRecords = []): arr
         'player_map' => $playerMap,
         'generated_at' => gmdate('c'),
         'standings' => $standings,
-        'group_complete' => round_robin_group_matches_complete($matchRecords),
+        'group_complete' => $groupComplete,
         'finals_required' => count($leaders) > 1,
     ];
 
-    if ($meta['finals_required']) {
-        foreach ($finalMatchRecords as $record) {
-            if (!empty($record['winner_user_id'])) {
-                $meta['champion'] = [
-                    'id' => (int)$record['winner_user_id'],
-                    'name' => $record['winner_name'] ?? null,
-                ];
-                $meta['finals_required'] = false;
-                break;
+    if ($groupComplete) {
+        if ($meta['finals_required']) {
+            foreach ($finalMatchRecords as $record) {
+                if (!empty($record['winner_user_id'])) {
+                    $meta['champion'] = [
+                        'id' => (int)$record['winner_user_id'],
+                        'name' => $record['winner_name'] ?? null,
+                    ];
+                    $meta['finals_required'] = false;
+                    break;
+                }
             }
+        } elseif (count($leaders) === 1) {
+            $meta['champion'] = [
+                'id' => $leaders[0]['player_id'],
+                'name' => $leaders[0]['name'],
+            ];
         }
-    }
-
-    if (empty($meta['champion']) && count($leaders) === 1) {
-        $meta['champion'] = [
-            'id' => $leaders[0]['player_id'],
-            'name' => $leaders[0]['name'],
-        ];
     }
 
     return [
@@ -2383,6 +2405,16 @@ function record_match_result(int $tournamentId, int $matchId, ?int $winnerId): a
     }
     touch_tournament($tournamentId);
 
+    $matches = tournament_matches($tournamentId);
+    $championId = determine_tournament_champion($tournament, $structure, $matches);
+    $type = $tournament['type'] ?? '';
+    if ($championId !== null && tournament_matches_complete($matches, $type)) {
+        if (($tournament['status'] ?? '') !== 'completed') {
+            update_tournament_status($tournamentId, 'completed');
+            $tournament['status'] = 'completed';
+        }
+    }
+
     return $structure;
 }
 
@@ -2658,7 +2690,7 @@ function tournament_matches(int $tournamentId): array
     return $stmt->fetchAll();
 }
 
-function determine_tournament_champion(array $tournament): ?int
+function determine_tournament_champion(array $tournament, ?array $structure = null, ?array $matches = null): ?int
 {
     $tournamentId = isset($tournament['id']) ? (int)$tournament['id'] : 0;
     if ($tournamentId <= 0) {
@@ -2666,17 +2698,24 @@ function determine_tournament_champion(array $tournament): ?int
     }
 
     $type = $tournament['type'] ?? '';
-    $structure = null;
 
     if ($type === 'round-robin') {
-        $structure = generate_bracket_structure($tournamentId);
+        if ($structure === null) {
+            $structure = generate_bracket_structure($tournamentId);
+        }
         $championMeta = $structure['meta']['champion']['id'] ?? null;
         if ($championMeta) {
             return (int)$championMeta;
         }
+        $groupComplete = !empty($structure['meta']['group_complete']);
+        if (!$groupComplete) {
+            return null;
+        }
     }
 
-    $matches = tournament_matches($tournamentId);
+    if ($matches === null) {
+        $matches = tournament_matches($tournamentId);
+    }
     if (!$matches) {
         if ($structure && !empty($structure['meta']['standings'][0]['player_id'])) {
             return (int)$structure['meta']['standings'][0]['player_id'];

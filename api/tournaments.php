@@ -236,12 +236,17 @@ switch ($action) {
             ]);
             exit;
         }
+        $updatedTournament = get_tournament($tournamentId);
+        $status = $tournament['status'];
+        if ($updatedTournament && !empty($updatedTournament['status'])) {
+            $status = $updatedTournament['status'];
+        }
         header('Content-Type: application/json');
         $key = $tournament['type'] === 'round-robin' ? 'group' : 'bracket';
         echo safe_json_encode([
             'ok' => true,
             $key => $structure,
-            'status' => $tournament['status'],
+            'status' => $status,
         ]);
         exit;
 
