@@ -299,11 +299,12 @@ function recent_results(int $userId, int $limit = 5): array
     $sql = 'SELECT tm.*, t.name as tournament_name
             FROM tournament_matches tm
             INNER JOIN tournaments t ON tm.tournament_id = t.id
-            WHERE (tm.player1_user_id = :user OR tm.player2_user_id = :user)
+            WHERE (tm.player1_user_id = :user1 OR tm.player2_user_id = :user2)
             ORDER BY tm.id DESC
             LIMIT :limit';
     $stmt = db()->prepare($sql);
-    $stmt->bindValue(':user', $userId, PDO::PARAM_INT);
+    $stmt->bindValue(':user1', $userId, PDO::PARAM_INT);
+    $stmt->bindValue(':user2', $userId, PDO::PARAM_INT);
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll();
