@@ -51,18 +51,28 @@ $buildTournamentPayload = static function (array $tournament, array $players, bo
         $players
     );
 
-    return safe_json_encode([
-        'id' => (int)$tournament['id'],
-        'name' => $tournament['name'],
-        'status' => $tournament['status'],
-        'type' => $tournament['type'],
-        'description' => $tournament['description'],
-        'scheduled_at' => $tournament['scheduled_at'],
-        'location' => $tournament['location'],
-        'players' => $playerIds,
-        'player_roster' => $playerRoster,
-        'is_registered' => $isRegistered,
-    ]);
+    try {
+        return safe_json_encode([
+            'id' => (int)$tournament['id'],
+            'name' => $tournament['name'],
+            'status' => $tournament['status'],
+            'type' => $tournament['type'],
+            'description' => $tournament['description'],
+            'scheduled_at' => $tournament['scheduled_at'],
+            'location' => $tournament['location'],
+            'players' => $playerIds,
+            'player_roster' => $playerRoster,
+            'is_registered' => $isRegistered,
+        ]);
+    } catch (Throwable $e) {
+        error_log(sprintf(
+            'Failed to encode tournament payload for tournament %d: %s',
+            isset($tournament['id']) ? (int)$tournament['id'] : 0,
+            $e->getMessage()
+        ));
+
+        return '{}';
+    }
 };
 
 $upcomingTournaments = [];
@@ -402,5 +412,6 @@ foreach ($recentMatchesRaw as $match) {
         <?php endif; ?>
     </section>
 </div>
-<?php require __DIR__ . '/../../templates/partials/tournament-viewer-modal.php'; ?>
-<?php require __DIR__ . '/../../templates/footer.php';
+<?php
+require __DIR__ . '/../../templates/partials/tournament-viewer-modal.php';
+require __DIR__ . '/../../templates/footer.php';
