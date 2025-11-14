@@ -10,6 +10,34 @@ require_csrf();
 $action = $_POST['action'] ?? '';
 $user = current_user();
 
+function respond_tournament_error(string $message, int $statusCode = 400): void
+{
+    if (!is_ajax_request()) {
+        return;
+    }
+
+    json_response([
+        'status' => 'error',
+        'message' => $message,
+    ], $statusCode);
+}
+
+function respond_tournament_success(string $message, array $tournament, ?array $user = null): void
+{
+    if (!is_ajax_request()) {
+        return;
+    }
+
+    $userId = $user['id'] ?? null;
+    $payload = tournament_payload_with_players($tournament, $userId !== null ? (int)$userId : null);
+
+    json_response([
+        'status' => 'success',
+        'message' => $message,
+        'tournament' => $payload,
+    ]);
+}
+
 switch ($action) {
     case 'register':
         require_login();
@@ -70,7 +98,9 @@ switch ($action) {
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);
         $tournament = get_tournament($tournamentId);
         if (!$tournament) {
-            flash('error', 'Tournament not found.');
+            $message = 'Tournament not found.';
+            respond_tournament_error($message, 404);
+            flash('error', $message);
             redirect('/?page=admin&t=manage');
         }
         $name = trim($_POST['name'] ?? '');
@@ -91,7 +121,9 @@ switch ($action) {
             $location = $tournament['location'] ?: default_tournament_location();
         }
         if ($name === '' || !in_array($type, ['single', 'double', 'round-robin'], true)) {
-            flash('error', 'Please provide valid tournament details.');
+            $message = 'Please provide valid tournament details.';
+            respond_tournament_error($message, 422);
+            flash('error', $message);
             redirect('/?page=admin&t=view&id=' . $tournamentId);
         }
         $typeChanged = $type !== $tournament['type'];
@@ -100,14 +132,24 @@ switch ($action) {
         if ($typeChanged && !$playersChanged) {
             refresh_tournament_bracket_snapshot($tournamentId);
         }
-        flash('success', 'Tournament settings updated.');
+        $updated = get_tournament($tournamentId);
+        $successMessage = 'Tournament settings updated.';
+        if ($updated) {
+            respond_tournament_success($successMessage, $updated, $user);
+        }
+        flash('success', $successMessage);
         redirect('/?page=admin&t=view&id=' . $tournamentId);
 
     case 'open':
         require_role('admin', 'manager');
         $id = (int)($_POST['tournament_id'] ?? 0);
         update_tournament_status($id, 'open');
-        flash('success', 'Tournament opened for registration.');
+        $updatedTournament = get_tournament($id);
+        $message = 'Tournament opened for registration.';
+        if ($updatedTournament) {
+            respond_tournament_success($message, $updatedTournament, $user);
+        }
+        flash('success', $message);
         redirect('/?page=admin&t=view&id=' . $id);
 
     case 'start':
@@ -116,7 +158,9 @@ switch ($action) {
         seed_matches_for_tournament($id);
         $structure = generate_bracket_structure($id);
         if (!$structure) {
-            flash('error', 'Unable to generate bracket. Ensure there are players registered.');
+            $errorMessage = 'Unable to generate bracket. Ensure there are players registered.';
+            respond_tournament_error($errorMessage, 400);
+            flash('error', $errorMessage);
             redirect('/?page=admin&t=manage&id=' . $id);
         }
         $tournament = get_tournament($id);
@@ -126,14 +170,24 @@ switch ($action) {
             update_tournament_json($id, json_encode($structure), null);
         }
         update_tournament_status($id, 'live');
-        flash('success', 'Tournament started.');
+        $updatedTournament = get_tournament($id);
+        $message = 'Tournament started.';
+        if ($updatedTournament) {
+            respond_tournament_success($message, $updatedTournament, $user);
+        }
+        flash('success', $message);
         redirect('/?page=admin&t=view&id=' . $id);
 
     case 'complete':
         require_role('admin', 'manager');
         $id = (int)($_POST['tournament_id'] ?? 0);
         update_tournament_status($id, 'completed');
-        flash('success', 'Tournament completed.');
+        $updatedTournament = get_tournament($id);
+        $message = 'Tournament completed.';
+        if ($updatedTournament) {
+            respond_tournament_success($message, $updatedTournament, $user);
+        }
+        flash('success', $message);
         redirect('/?page=admin&t=view&id=' . $id);
 
     case 'add_player_admin':

@@ -3772,14 +3772,31 @@ $(function () {
         });
     }
 
-    function openSettingsModal(modal, tournamentId) {
-        if (!modal || !modal.length) {
+    function applyStatusPill(element, status) {
+        if (!element || !element.length) {
             return;
+        }
+        var normalized = (status || '').toLowerCase();
+        element.removeClass('status-draft status-open status-live status-completed');
+        if (!normalized) {
+            element.attr('hidden', 'hidden');
+            element.text('');
+            return;
+        }
+        element.removeAttr('hidden');
+        element.addClass('status-' + normalized);
+        element.text(normalized.charAt(0).toUpperCase() + normalized.slice(1));
+    }
+
+    function populateSettingsModal(modal, tournamentId, options) {
+        if (!modal || !modal.length) {
+            return false;
         }
         var tournament = tournamentDirectory[tournamentId];
         if (!tournament) {
-            return;
+            return false;
         }
+        var config = $.extend({ expandPlayers: false }, options);
         ensurePlayerChecklist(modal);
         var form = modal.find('form');
         if (form.length && typeof form[0].reset === 'function') {
@@ -3793,12 +3810,29 @@ $(function () {
         form.find('[name="scheduled_time"]').val(toTimeInputValue(tournament.scheduledDate));
         form.find('[name="location"]').val(tournament.location || defaultTournamentLocation);
 
+        var metaSchedule = modal.find('.js-settings-schedule');
+        if (metaSchedule.length) {
+            metaSchedule.text(formatTournamentSchedule(tournament));
+        }
+        applyStatusPill(modal.find('.js-settings-status'), tournament.status);
+
+        var adminLink = modal.find('.js-settings-open-admin');
+        if (adminLink.length) {
+            adminLink.attr('href', '/?page=admin&t=view&id=' + tournament.id);
+        }
+        modal.find('.js-settings-tournament-id').val(tournament.id);
+
         var list = modal.find('[data-player-list]');
         var toggleButton = modal.find('[data-toggle-player-list]');
-        if (list.attr('hidden') === undefined) {
-            list.attr('hidden', 'hidden');
+        if (config.expandPlayers) {
+            list.removeAttr('hidden');
+            toggleButton.attr('aria-expanded', 'true').text('Hide Player List');
+        } else {
+            if (list.attr('hidden') === undefined) {
+                list.attr('hidden', 'hidden');
+            }
+            toggleButton.attr('aria-expanded', 'false').text('Add Players');
         }
-        toggleButton.attr('aria-expanded', 'false').text('Add Players');
 
         list.find('input[type="checkbox"]').each(function () {
             var checkbox = $(this);
@@ -3807,7 +3841,13 @@ $(function () {
             checkbox.prop('checked', isChecked);
         });
         renderSelectedPlayers(modal);
-        openModal(modal);
+        return true;
+    }
+
+    function openSettingsModal(modal, tournamentId, options) {
+        if (populateSettingsModal(modal, tournamentId, options)) {
+            openModal(modal);
+        }
     }
 
     function determineInitialMonth() {
@@ -3819,6 +3859,7 @@ $(function () {
         if (!container || !container.length || !state) {
             return;
         }
+        container.data('calendarState', state);
         state.tournaments = state.ids.map(function (id) {
             return tournamentDirectory[id];
         }).filter(Boolean);
@@ -3946,18 +3987,209 @@ $(function () {
         });
     }
 
+    function populateActionsModal(modal, tournament) {
+        if (!modal || !modal.length || !tournament) {
+            return false;
+        }
+        var tournamentId = tournament.id;
+        modal.data('tournamentId', tournamentId);
+        modal.find('.js-action-title').text(tournament.name || 'Tournament');
+        modal.find('.js-action-schedule').text(formatTournamentSchedule(tournament));
+        modal.find('.js-open-tournament').attr('href', '/?page=admin&t=view&id=' + tournamentId);
+        modal.find('.js-action-tournament-id').val(tournamentId);
+        return true;
+    }
+
     function openActionsModal(tournamentId) {
         var modal = $('#tournamentActionsModal');
         var tournament = tournamentDirectory[tournamentId];
         if (!modal.length || !tournament) {
             return;
         }
-        modal.data('tournamentId', tournamentId);
-        modal.find('.js-action-title').text(tournament.name || 'Tournament');
-        modal.find('.js-action-schedule').text(formatTournamentSchedule(tournament));
-        modal.find('.js-open-tournament').attr('href', '/?page=admin&t=view&id=' + tournamentId);
-        openModal(modal);
+        if (populateActionsModal(modal, tournament)) {
+            openModal(modal);
+        }
     }
+
+    function showManagementFeedback(modal, type, message) {
+        if (!modal || !modal.length) {
+            return;
+        }
+        var feedback = modal.find('[data-feedback]').first();
+        if (!feedback.length) {
+            return;
+        }
+        feedback.removeClass('is-error is-success');
+        if (!message) {
+            feedback.attr('hidden', 'hidden');
+            feedback.text('');
+            feedback.removeAttr('role');
+            return;
+        }
+        feedback.text(message);
+        feedback.removeAttr('hidden');
+        if (type === 'error') {
+            feedback.addClass('is-error');
+            feedback.attr('role', 'alert');
+        } else {
+            feedback.addClass('is-success');
+            feedback.attr('role', 'status');
+        }
+    }
+
+    function refreshCalendarWithTournament(tournament) {
+        var calendarContainer = $('#tournamentCalendar');
+        if (!calendarContainer.length) {
+            return;
+        }
+        var state = calendarContainer.data('calendarState');
+        if (!state) {
+            state = {
+                ids: [],
+                currentMonth: determineInitialMonth(),
+            };
+        }
+        if (!Array.isArray(state.ids)) {
+            state.ids = [];
+        }
+        var id = tournament && typeof tournament.id !== 'undefined' ? parseInt(tournament.id, 10) : 0;
+        if (id && state.ids.indexOf(id) === -1) {
+            state.ids.push(id);
+        }
+        calendarContainer.data('calendarState', state);
+        buildCalendar(calendarContainer, state);
+    }
+
+    function handleTournamentUpdate(tournament) {
+        if (!tournament) {
+            return null;
+        }
+        var stored = registerTournament(tournament);
+        if (!stored) {
+            return null;
+        }
+        refreshCalendarWithTournament(stored);
+
+        var settingsModal = $('#tournamentSettingsModal');
+        if (settingsModal.length && settingsModal.hasClass('is-visible')) {
+            var expandPlayers = settingsModal.find('[data-player-list]').attr('hidden') === undefined;
+            populateSettingsModal(settingsModal, stored.id, { expandPlayers: expandPlayers });
+        }
+
+        var actionsModal = $('#tournamentActionsModal');
+        if (actionsModal.length && actionsModal.hasClass('is-visible')) {
+            populateActionsModal(actionsModal, stored);
+        }
+
+        var viewerModal = $('#tournamentViewerModal');
+        if (viewerModal.length && viewerModal.hasClass('is-visible')) {
+            var activeId = parseInt(viewerModal.data('tournamentId'), 10);
+            if (activeId === stored.id) {
+                openTournamentViewerModal(activeId, stored);
+            }
+        }
+
+        return stored;
+    }
+
+    function handleManagementSubmit(event) {
+        event.preventDefault();
+        var form = $(this);
+        if (form.data('submitting')) {
+            return;
+        }
+        var modal = form.closest('.modal-overlay');
+        if (!modal.length) {
+            return;
+        }
+        form.data('submitting', true);
+        var submitButton = form.find('button[type="submit"], input[type="submit"]').first();
+        var buttonIsInput = false;
+        var originalLabel = null;
+        if (submitButton.length) {
+            buttonIsInput = submitButton.is('input');
+            originalLabel = buttonIsInput ? submitButton.val() : submitButton.html();
+        }
+        if (submitButton.length) {
+            submitButton.prop('disabled', true);
+        }
+        showManagementFeedback(modal, null, null);
+
+        $.ajax({
+            method: form.attr('method') || 'POST',
+            url: form.attr('action') || window.location.href,
+            dataType: 'json',
+            data: form.serialize(),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .done(function (response) {
+                if (!response || response.status !== 'success') {
+                    var errorMessage = response && response.message ? response.message : 'Unable to update tournament.';
+                    showManagementFeedback(modal, 'error', errorMessage);
+                    return;
+                }
+                var successMessage = response.message || 'Tournament updated.';
+                showManagementFeedback(modal, 'success', successMessage);
+                if (response.tournament) {
+                    handleTournamentUpdate(response.tournament);
+                }
+            })
+            .fail(function (xhr) {
+                var fallback = 'Unable to update tournament.';
+                var parsed = xhr.responseJSON || parseJsonString(xhr.responseText);
+                if (parsed && parsed.message) {
+                    fallback = parsed.message;
+                } else if (xhr.statusText) {
+                    fallback += ' (' + xhr.statusText + ')';
+                }
+                showManagementFeedback(modal, 'error', fallback);
+            })
+            .always(function () {
+                form.data('submitting', false);
+                if (submitButton.length) {
+                    submitButton.prop('disabled', false);
+                    if (originalLabel !== null) {
+                        if (buttonIsInput) {
+                            submitButton.val(originalLabel);
+                        } else {
+                            submitButton.html(originalLabel);
+                        }
+                    }
+                }
+            });
+    }
+
+    $(document).on('click', '[data-viewer-open-actions]', function (event) {
+        event.preventDefault();
+        var viewerModal = $('#tournamentViewerModal');
+        if (!viewerModal.length) {
+            return;
+        }
+        var tournamentId = parseInt(viewerModal.data('tournamentId'), 10);
+        if (!tournamentId) {
+            return;
+        }
+        closeModal(viewerModal, true);
+        openActionsModal(tournamentId);
+    });
+
+    $(document).on('click', '[data-viewer-open-settings]', function (event) {
+        event.preventDefault();
+        var viewerModal = $('#tournamentViewerModal');
+        if (!viewerModal.length) {
+            return;
+        }
+        var tournamentId = parseInt(viewerModal.data('tournamentId'), 10);
+        if (!tournamentId) {
+            return;
+        }
+        var modal = $('#tournamentSettingsModal');
+        if (!modal.length) {
+            return;
+        }
+        closeModal(viewerModal, true);
+        openSettingsModal(modal, tournamentId, { expandPlayers: true });
+    });
 
     $(document).on('click', '[data-view-bracket]', function (event) {
         event.preventDefault();
@@ -4040,6 +4272,8 @@ $(function () {
         closeModal(actions, true);
         openSettingsModal(modal, tournamentId);
     });
+
+    $('#tournamentSettingsModal, #tournamentActionsModal').on('submit', 'form', handleManagementSubmit);
 
     $('#tournamentSettingsModal').on('click', '[data-toggle-player-list]', function (event) {
         event.preventDefault();

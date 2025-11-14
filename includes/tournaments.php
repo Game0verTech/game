@@ -84,6 +84,56 @@ function get_tournament(int $id): ?array
     return ensure_tournament_schedule($tournament, 0);
 }
 
+function tournament_payload_with_players(array $tournament, ?int $userId = null): array
+{
+    $tournamentId = isset($tournament['id']) ? (int)$tournament['id'] : 0;
+    if ($tournamentId <= 0) {
+        return [];
+    }
+
+    $players = tournament_players($tournamentId);
+    $roster = array_map(
+        static function (array $player): array {
+            $username = $player['username'] ?? 'Player';
+
+            return [
+                'id' => (int)$player['user_id'],
+                'name' => $username,
+                'username' => $username,
+                'display_name' => $player['display_name'] ?? null,
+                'profile_url' => user_profile_url($username),
+                'icon_url' => resolve_user_icon_url($player['icon_path'] ?? null),
+            ];
+        },
+        $players
+    );
+
+    $payload = [
+        'id' => $tournamentId,
+        'name' => $tournament['name'] ?? 'Tournament',
+        'status' => $tournament['status'] ?? 'draft',
+        'type' => $tournament['type'] ?? 'single',
+        'description' => $tournament['description'] ?? '',
+        'scheduled_at' => $tournament['scheduled_at'] ?? null,
+        'location' => $tournament['location'] ?? null,
+        'player_count' => count($players),
+        'players' => array_map(
+            static function (array $player): int {
+                return (int)$player['user_id'];
+            },
+            $players
+        ),
+        'player_roster' => $roster,
+        'players_detail' => $roster,
+    ];
+
+    if ($userId !== null) {
+        $payload['is_registered'] = is_user_registered($tournamentId, $userId);
+    }
+
+    return $payload;
+}
+
 function list_tournaments(?string $status = null): array
 {
     ensure_tournament_schedule_columns();
