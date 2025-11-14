@@ -1,15 +1,15 @@
 <?php
 require_once __DIR__ . '/includes/bootstrap.php';
 
-$page = $_GET['page'] ?? 'home';
+$requestedPage = $_GET['page'] ?? null;
+$page = $requestedPage ?? (current_user() ? 'dashboard' : 'home');
 $allowedPages = [
     'home' => __DIR__ . '/pages/public/home.php',
-    'tournaments' => __DIR__ . '/pages/public/tournaments.php',
-    'tournament' => __DIR__ . '/pages/public/tournament.php',
     'login' => __DIR__ . '/pages/user/login.php',
     'register' => __DIR__ . '/pages/user/register.php',
     'dashboard' => __DIR__ . '/pages/user/dashboard.php',
     'verify' => __DIR__ . '/pages/user/verify.php',
+    'calendar' => __DIR__ . '/pages/user/calendar.php',
     'admin' => __DIR__ . '/admin/index.php',
     'store' => __DIR__ . '/pages/admin/store.php',
 ];
