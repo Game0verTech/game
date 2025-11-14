@@ -402,5 +402,6 @@ foreach ($recentMatchesRaw as $match) {
         <?php endif; ?>
     </section>
 </div>
-<?php require __DIR__ . '/../../templates/partials/tournament-viewer-modal.php'; ?>
-<?php require __DIR__ . '/../../templates/footer.php';
+<?php
+require __DIR__ . '/../../templates/partials/tournament-viewer-modal.php';
+require __DIR__ . '/../../templates/footer.php';
