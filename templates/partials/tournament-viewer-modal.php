@@ -14,17 +14,8 @@ if ($canManageTournamentsInViewer) {
     );
 }
 $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersForManagement) : '[]';
-$viewerManageAccess = $canManageTournamentsInViewer ? '1' : '0';
-$viewerDefaultMode = $canManageTournamentsInViewer ? 'admin' : 'viewer';
-$viewerToken = $canManageTournamentsInViewer ? csrf_token() : null;
 ?>
-<div
-    id="tournamentViewerModal"
-    class="modal-overlay js-tournament-viewer"
-    hidden
-    aria-hidden="true"
-    data-manage-access="<?= $viewerManageAccess ?>"
->
+<div id="tournamentViewerModal" class="modal-overlay js-tournament-viewer" hidden aria-hidden="true">
     <div class="modal modal--fullscreen tournament-viewer">
         <button type="button" class="modal__close" data-close-modal data-modal-focus aria-label="Close tournament viewer">&times;</button>
         <header class="tournament-viewer__header">
@@ -53,25 +44,13 @@ $viewerToken = $canManageTournamentsInViewer ? csrf_token() : null;
                     <?php endif; ?>
                     <div
                         class="viewer-bracket js-viewer-bracket bracket-container"
-                        data-mode="<?= $viewerDefaultMode ?>"
-                        data-default-mode="<?= $viewerDefaultMode ?>"
-                        data-manage-access="<?= $viewerManageAccess ?>"
+                        data-mode="viewer"
                         data-refresh-interval="3000"
-                        <?php if ($viewerToken !== null): ?>
-                            data-token="<?= sanitize($viewerToken) ?>"
-                            data-default-token="<?= sanitize($viewerToken) ?>"
-                        <?php endif; ?>
                     ></div>
                     <div
                         class="viewer-groups js-viewer-groups group-container"
-                        data-mode="<?= $viewerDefaultMode ?>"
-                        data-default-mode="<?= $viewerDefaultMode ?>"
-                        data-manage-access="<?= $viewerManageAccess ?>"
+                        data-mode="viewer"
                         data-refresh-interval="3000"
-                        <?php if ($viewerToken !== null): ?>
-                            data-token="<?= sanitize($viewerToken) ?>"
-                            data-default-token="<?= sanitize($viewerToken) ?>"
-                        <?php endif; ?>
                         hidden
                     ></div>
                 </section>
@@ -119,6 +98,7 @@ $viewerToken = $canManageTournamentsInViewer ? csrf_token() : null;
                     </div>
                 </div>
             </div>
+            <p class="management-feedback" data-feedback hidden aria-live="polite"></p>
             <p class="muted">Update tournament details and manage the registered roster.</p>
             <form method="post" action="/api/tournaments.php" class="modal-form">
                 <input type="hidden" name="_token" value="<?= csrf_token() ?>">
@@ -174,6 +154,7 @@ $viewerToken = $canManageTournamentsInViewer ? csrf_token() : null;
                 <a href="#" class="btn link js-open-tournament" target="_blank" rel="noopener">Open in admin dashboard</a>
                 <button type="button" class="btn primary" data-open-settings>Edit tournament settings</button>
             </div>
+            <p class="management-feedback" data-feedback hidden aria-live="polite"></p>
             <div class="tournament-actions-list">
                 <form method="post" action="/api/tournaments.php">
                     <input type="hidden" name="_token" value="<?= csrf_token() ?>">
