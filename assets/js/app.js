@@ -1120,7 +1120,7 @@ $(function () {
 
         enableBracketPanning(container);
         refreshBracketGeometry(container);
-        enableAdminControls(container, effectiveMode);
+        enableBracketActions(container, effectiveMode);
     }
     function clearTeamHighlight(container) {
         if (!container || !container.length) {
@@ -1253,14 +1253,29 @@ $(function () {
         menu.data('payload', payload);
         menu.attr('aria-hidden', 'false');
         var markBtn = menu.find('[data-action="mark"]');
-        markBtn.text('Mark ' + payload.playerName + ' as winner');
         var profileBtn = menu.find('[data-action="profile"]');
+        var focusTarget = markBtn;
+        if (markBtn.length) {
+            if (payload.canMark) {
+                markBtn.show();
+                markBtn.text('Mark ' + payload.playerName + ' as winner');
+            } else {
+                markBtn.hide();
+                focusTarget = profileBtn.length ? profileBtn : markBtn;
+            }
+        }
         if (profileBtn.length) {
             if (payload.profileUrl) {
                 profileBtn.show();
                 profileBtn.text('View ' + payload.playerName + ' profile');
+                if (!payload.canMark) {
+                    focusTarget = profileBtn;
+                }
             } else {
                 profileBtn.hide();
+                if (!payload.canMark) {
+                    focusTarget = menu.find('[data-action="cancel"]');
+                }
             }
         }
 
@@ -1283,7 +1298,9 @@ $(function () {
 
         window.requestAnimationFrame(function () {
             menu.addClass('is-visible');
-            markBtn.trigger('focus');
+            if (focusTarget && focusTarget.length) {
+                focusTarget.trigger('focus');
+            }
         });
     }
 
@@ -1318,7 +1335,7 @@ $(function () {
             event.preventDefault();
             var payload = menu.data('payload');
             hideContextMenu(container);
-            if (payload) {
+            if (payload && payload.canMark) {
                 markWinner(payload.container, payload.tournamentId, payload.matchId, payload.playerId, payload.token);
             }
         });
@@ -1357,10 +1374,14 @@ $(function () {
         container.data('contextMenuReady', true);
     }
 
-    function extractTeamPayload(container, team) {
+    function extractTeamPayload(container, team, options) {
         if (!team || !team.length) {
             return null;
         }
+
+        var settings = options || {};
+        var requireWinnerData = settings.requireWinnerData !== false;
+        var allowWinnerSelection = settings.allowWinnerSelection !== false;
 
         var matchEl = team.closest('.bracket-match');
         var roundIndexAttr = team.attr('data-round-index');
@@ -1397,7 +1418,7 @@ $(function () {
             tournamentId = null;
         }
 
-        var token = container.data('token') || container.attr('data-token');
+        var token = container.data('token') || container.attr('data-token') || null;
 
         var roundIndex = parseInt(roundIndexAttr, 10);
         if (isNaN(roundIndex)) {
@@ -1469,7 +1490,8 @@ $(function () {
             team.attr('data-match-index', matchIndex);
         }
 
-        if (matchId === null || playerId === null || tournamentId === null || !token) {
+        var hasWinnerData = matchId !== null && playerId !== null && tournamentId !== null && !!token;
+        if (!hasWinnerData && requireWinnerData) {
             if (window.console && typeof window.console.warn === 'function') {
                 console.warn('Bracket winner selection unavailable due to missing data', {
                     matchId: matchId,
@@ -1486,32 +1508,45 @@ $(function () {
             matchId: matchId,
             playerId: playerId,
             tournamentId: tournamentId,
-            token: token,
+            token: hasWinnerData ? token : null,
             playerName: playerName,
             playerUsername: username,
             profileUrl: profileUrl,
             roundIndex: roundIndex,
             matchIndex: matchIndex,
             team: team,
+            canMark: allowWinnerSelection && hasWinnerData,
         };
     }
 
-    function requestWinnerSelection(container, team, origin) {
-        var status = container.data('status');
-        if (!status) {
-            status = container.attr('data-status');
-        }
-        if (status && status !== 'live') {
-            var statusMessage = 'Please start the tournament before recording match winners.';
-            if (status === 'completed') {
-                statusMessage = 'This tournament has already been completed.';
+    function requestWinnerSelection(container, team, origin, options) {
+        var settings = options || {};
+        var allowWinnerSelection = settings.allowWinnerSelection !== false;
+        if (allowWinnerSelection) {
+            var status = container.data('status');
+            if (!status) {
+                status = container.attr('data-status');
             }
-            window.alert(statusMessage);
-            return;
+            if (status && status !== 'live') {
+                var statusMessage = 'Please start the tournament before recording match winners.';
+                if (status === 'completed') {
+                    statusMessage = 'This tournament has already been completed.';
+                }
+                window.alert(statusMessage);
+                return;
+            }
         }
         setupContextMenu(container);
-        var payload = extractTeamPayload(container, team);
+        var payload = extractTeamPayload(container, team, {
+            requireWinnerData: settings.requireWinnerData !== false,
+            allowWinnerSelection: allowWinnerSelection,
+        });
         if (!payload) {
+            hideContextMenu(container);
+            return;
+        }
+
+        if (!payload.canMark && !payload.profileUrl) {
             hideContextMenu(container);
             return;
         }
@@ -2844,7 +2879,7 @@ $(function () {
         }
 
         enableBracketPanning(container);
-        enableAdminControls(container, effectiveMode);
+        enableBracketActions(container, effectiveMode);
 
         refreshBracketGeometry(container);
         window.requestAnimationFrame(function () {
@@ -3259,37 +3294,91 @@ $(function () {
             });
     }
 
-    function enableAdminControls(container, mode) {
-        if (mode !== 'admin') {
+    function enableBracketActions(container, mode) {
+        if (!container || !container.length) {
             return;
         }
-        container.off('contextmenu.bracketAction').on('contextmenu.bracketAction', '.team.is-selectable', function (event) {
+
+        container.off('.bracketAction');
+
+        if (mode === 'admin') {
+            container.on('contextmenu.bracketAction', '.team.is-selectable', function (event) {
+                event.preventDefault();
+                requestWinnerSelection(container, $(this), { pageX: event.pageX, pageY: event.pageY, type: 'contextmenu' });
+            });
+
+            container.on('click.bracketAction', '.team.is-selectable', function (event) {
+                if (event.button !== 0) {
+                    return;
+                }
+                event.preventDefault();
+                requestWinnerSelection(container, $(this), { pageX: event.pageX, pageY: event.pageY, type: 'click' });
+            });
+
+            container.on('keydown.bracketAction', '.team.is-selectable', function (event) {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                event.preventDefault();
+                requestWinnerSelection(container, $(this), { type: 'keyboard' });
+            });
+
+            container.on('touchend.bracketAction', '.team.is-selectable', function (event) {
+                var touch = event.originalEvent && event.originalEvent.changedTouches ? event.originalEvent.changedTouches[0] : null;
+                if (touch) {
+                    event.preventDefault();
+                }
+                requestWinnerSelection(
+                    container,
+                    $(this),
+                    touch ? { pageX: touch.pageX, pageY: touch.pageY, type: 'touch' } : { type: 'touch' }
+                );
+            });
+            return;
+        }
+
+        container.on('contextmenu.bracketAction', '.team.is-selectable', function (event) {
             event.preventDefault();
-            requestWinnerSelection(container, $(this), { pageX: event.pageX, pageY: event.pageY, type: 'contextmenu' });
+            requestWinnerSelection(
+                container,
+                $(this),
+                { pageX: event.pageX, pageY: event.pageY, type: 'contextmenu' },
+                { allowWinnerSelection: false, requireWinnerData: false }
+            );
         });
 
-        container.off('click.bracketAction').on('click.bracketAction', '.team.is-selectable', function (event) {
+        container.on('click.bracketAction', '.team.is-selectable', function (event) {
             if (event.button !== 0) {
                 return;
             }
             event.preventDefault();
-            requestWinnerSelection(container, $(this), { pageX: event.pageX, pageY: event.pageY, type: 'click' });
+            requestWinnerSelection(
+                container,
+                $(this),
+                { pageX: event.pageX, pageY: event.pageY, type: 'click' },
+                { allowWinnerSelection: false, requireWinnerData: false }
+            );
         });
 
-        container.off('keydown.bracketAction').on('keydown.bracketAction', '.team.is-selectable', function (event) {
+        container.on('keydown.bracketAction', '.team.is-selectable', function (event) {
             if (event.key !== 'Enter' && event.key !== ' ') {
                 return;
             }
             event.preventDefault();
-            requestWinnerSelection(container, $(this), { type: 'keyboard' });
+            requestWinnerSelection(container, $(this), { type: 'keyboard' }, { allowWinnerSelection: false, requireWinnerData: false });
         });
 
-        container.off('touchend.bracketAction').on('touchend.bracketAction', '.team.is-selectable', function (event) {
+        container.on('touchend.bracketAction', '.team.is-selectable', function (event) {
             var touch = event.originalEvent && event.originalEvent.changedTouches ? event.originalEvent.changedTouches[0] : null;
             if (touch) {
                 event.preventDefault();
             }
-            requestWinnerSelection(container, $(this), touch ? { pageX: touch.pageX, pageY: touch.pageY, type: 'touch' } : { type: 'touch' });
+            requestWinnerSelection(
+                container,
+                $(this),
+                touch ? { pageX: touch.pageX, pageY: touch.pageY, type: 'touch' } : { type: 'touch' },
+                { allowWinnerSelection: false, requireWinnerData: false }
+            );
         });
     }
 
