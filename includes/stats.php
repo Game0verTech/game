@@ -31,6 +31,169 @@ function ensure_user_stats_table(): bool
     return $ensured;
 }
 
+function stats_decode_match_meta($meta): array
+{
+    if (function_exists('decode_match_meta')) {
+        return decode_match_meta($meta);
+    }
+
+    if (is_array($meta)) {
+        return $meta;
+    }
+
+    if (is_string($meta) && $meta !== '') {
+        $decoded = json_decode($meta, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
+
+    return [];
+}
+
+function stats_lookup_user_id_by_name(string $name): ?int
+{
+    static $cache = [];
+
+    $normalized = strtolower(trim($name));
+    if ($normalized === '' || $normalized === 'bye' || $normalized === 'tbd') {
+        return null;
+    }
+
+    if (array_key_exists($normalized, $cache)) {
+        return $cache[$normalized];
+    }
+
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare('SELECT id FROM users WHERE username = :username LIMIT 1');
+        $stmt->execute([':username' => $name]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(:username) LIMIT 1');
+            $stmt->execute([':username' => $name]);
+            $row = $stmt->fetch();
+        }
+
+        $cache[$normalized] = $row ? (int)$row['id'] : null;
+    } catch (Throwable $e) {
+        error_log('Failed to lookup user id for stats: ' . $e->getMessage());
+        $cache[$normalized] = null;
+    }
+
+    return $cache[$normalized];
+}
+
+function stats_meta_player_id(?array $meta): ?int
+{
+    if (!$meta) {
+        return null;
+    }
+
+    foreach (['id', 'user_id', 'player_id'] as $key) {
+        if (isset($meta[$key]) && is_numeric($meta[$key])) {
+            $id = (int)$meta[$key];
+            if ($id > 0) {
+                return $id;
+            }
+        }
+    }
+
+    $nameKeys = ['username', 'name'];
+    foreach ($nameKeys as $nameKey) {
+        if (!empty($meta[$nameKey]) && is_string($meta[$nameKey])) {
+            $resolved = stats_lookup_user_id_by_name($meta[$nameKey]);
+            if ($resolved) {
+                return $resolved;
+            }
+        }
+    }
+
+    return null;
+}
+
+function stats_resolve_username(int $userId): ?string
+{
+    try {
+        $user = get_user_by_id($userId);
+        if ($user && isset($user['username']) && $user['username'] !== '') {
+            return (string)$user['username'];
+        }
+    } catch (Throwable $e) {
+        error_log('Failed to resolve username for stats: ' . $e->getMessage());
+    }
+
+    return null;
+}
+
+function stats_build_user_match_filter(int $userId): array
+{
+    $clauses = [
+        'tm.player1_user_id = :user_id',
+        'tm.player2_user_id = :user_id',
+        'tm.winner_user_id = :user_id',
+    ];
+
+    $bindings = [
+        [
+            'name' => ':user_id',
+            'value' => $userId,
+            'type' => PDO::PARAM_INT,
+        ],
+    ];
+
+    $userIdStr = (string)$userId;
+
+    $idRegexes = [
+        ':meta_player1_id' => '\\"player1\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player2_id' => '\\"player2\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player1_user_id' => '\\"player1\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player2_user_id' => '\\"player2\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player1_player_id' => '\\"player1\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_player2_player_id' => '\\"player2\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_winner_id' => '\\"winner\\"[^}]*\\"id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_winner_user_id' => '\\"winner\\"[^}]*\\"user_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+        ':meta_winner_player_id' => '\\"winner\\"[^}]*\\"player_id\\":\\"?' . $userIdStr . '\\"?([^0-9])',
+    ];
+
+    foreach ($idRegexes as $placeholder => $pattern) {
+        $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) REGEXP ' . $placeholder . ')';
+        $bindings[] = [
+            'name' => $placeholder,
+            'value' => $pattern,
+            'type' => PDO::PARAM_STR,
+        ];
+    }
+
+    $username = stats_resolve_username($userId);
+    if ($username !== null) {
+        $usernameLower = strtolower($username);
+        $escapedUsername = addcslashes($usernameLower, '\\"');
+        $nameRegexes = [
+            ':meta_player1_username' => '\\"player1\\"[^}]*\\"username\\":\\"' . $escapedUsername . '\\"',
+            ':meta_player2_username' => '\\"player2\\"[^}]*\\"username\\":\\"' . $escapedUsername . '\\"',
+            ':meta_player1_name' => '\\"player1\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
+            ':meta_player2_name' => '\\"player2\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
+            ':meta_winner_name' => '\\"winner\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
+        ];
+
+        foreach ($nameRegexes as $placeholder => $pattern) {
+            $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) REGEXP ' . $placeholder . ')';
+            $bindings[] = [
+                'name' => $placeholder,
+                'value' => strtolower($pattern),
+                'type' => PDO::PARAM_STR,
+            ];
+        }
+    }
+
+    return [
+        'condition' => '(' . implode(' OR ', $clauses) . ')',
+        'bindings' => $bindings,
+    ];
+}
+
 function is_final_stage_label(?string $stage): bool
 {
     if ($stage === null) {
@@ -86,10 +249,58 @@ function calculate_user_stat_snapshot(int $userId): ?array
         $tournamentStmt = $pdo->prepare('SELECT t.id, t.status FROM tournaments t INNER JOIN tournament_players tp ON t.id = tp.tournament_id WHERE tp.user_id = :user');
         $tournamentStmt->execute([':user' => $userId]);
         $tournaments = $tournamentStmt->fetchAll();
-        $snapshot['tournaments_played'] = count($tournaments);
 
+        $tournamentStatuses = [];
         foreach ($tournaments as $row) {
-            $status = strtolower((string)($row['status'] ?? ''));
+            if (!isset($row['id'])) {
+                continue;
+            }
+            $tournamentId = (int)$row['id'];
+            if ($tournamentId <= 0) {
+                continue;
+            }
+            $tournamentStatuses[$tournamentId] = strtolower((string)($row['status'] ?? ''));
+        }
+
+        $matches = [];
+        $matchMap = [];
+
+        $filter = stats_build_user_match_filter($userId);
+        $matchSql = 'SELECT tm.*, t.status AS tournament_status
+                     FROM tournament_matches tm
+                     INNER JOIN tournaments t ON tm.tournament_id = t.id
+                     WHERE ' . $filter['condition'] . '
+                     ORDER BY tm.id ASC';
+        $matchesStmt = $pdo->prepare($matchSql);
+        foreach ($filter['bindings'] as $binding) {
+            $type = $binding['type'] ?? PDO::PARAM_STR;
+            $matchesStmt->bindValue($binding['name'], $binding['value'], $type);
+        }
+        $matchesStmt->execute();
+        foreach ($matchesStmt->fetchAll() as $match) {
+            if (!isset($match['id'])) {
+                continue;
+            }
+            $matchId = (int)$match['id'];
+            if ($matchId <= 0) {
+                continue;
+            }
+            $matchMap[$matchId] = $match;
+
+            if (isset($match['tournament_id'])) {
+                $tournamentId = (int)$match['tournament_id'];
+                if ($tournamentId > 0 && !isset($tournamentStatuses[$tournamentId]) && isset($match['tournament_status'])) {
+                    $tournamentStatuses[$tournamentId] = strtolower((string)$match['tournament_status']);
+                }
+            }
+        }
+
+        if ($matchMap) {
+            ksort($matchMap);
+            $matches = array_values($matchMap);
+        }
+
+        foreach ($tournamentStatuses as $status) {
             if ($status === 'completed') {
                 $snapshot['tournaments_completed']++;
             } elseif (in_array($status, ['open', 'live'], true)) {
@@ -97,14 +308,7 @@ function calculate_user_stat_snapshot(int $userId): ?array
             }
         }
 
-        $matchesStmt = $pdo->prepare(
-            'SELECT tm.*
-             FROM tournament_matches tm
-             WHERE tm.player1_user_id = :user OR tm.player2_user_id = :user
-             ORDER BY tm.id ASC'
-        );
-        $matchesStmt->execute([':user' => $userId]);
-        $matches = $matchesStmt->fetchAll();
+        $snapshot['tournaments_played'] = count($tournamentStatuses);
 
         $wins = 0;
         $losses = 0;
@@ -122,14 +326,38 @@ function calculate_user_stat_snapshot(int $userId): ?array
         $currentResultStreak = 0;
 
         foreach ($matches as $match) {
+            $meta = [];
+            if (array_key_exists('meta', $match)) {
+                $meta = stats_decode_match_meta($match['meta']);
+            }
+
             $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
+            if ($player1Id <= 0) {
+                $player1Id = stats_meta_player_id(isset($meta['player1']) && is_array($meta['player1']) ? $meta['player1'] : null) ?? 0;
+            }
+
             $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
+            if ($player2Id <= 0) {
+                $player2Id = stats_meta_player_id(isset($meta['player2']) && is_array($meta['player2']) ? $meta['player2'] : null) ?? 0;
+            }
 
             if ($player1Id !== $userId && $player2Id !== $userId) {
                 continue;
             }
 
             $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : null;
+            if ($winnerId === null && isset($meta['winner']) && is_array($meta['winner'])) {
+                $winnerId = stats_meta_player_id($meta['winner']);
+                if ($winnerId === null && isset($meta['winner']['slot'])) {
+                    $slot = (int)$meta['winner']['slot'];
+                    if ($slot === 1 && $player1Id > 0) {
+                        $winnerId = $player1Id;
+                    } elseif ($slot === 2 && $player2Id > 0) {
+                        $winnerId = $player2Id;
+                    }
+                }
+            }
+
             $isFinalStage = is_final_stage_label($match['stage'] ?? null);
 
             $scoreFor = null;
@@ -296,17 +524,41 @@ function get_user_stat(int $userId): ?array
 
 function recent_results(int $userId, int $limit = 5): array
 {
+    $filter = stats_build_user_match_filter($userId);
     $sql = 'SELECT tm.*, t.name as tournament_name
             FROM tournament_matches tm
             INNER JOIN tournaments t ON tm.tournament_id = t.id
-            WHERE (tm.player1_user_id = :user OR tm.player2_user_id = :user)
+            WHERE ' . $filter['condition'] . '
             ORDER BY tm.id DESC
             LIMIT :limit';
     $stmt = db()->prepare($sql);
-    $stmt->bindValue(':user', $userId, PDO::PARAM_INT);
+    foreach ($filter['bindings'] as $binding) {
+        $type = $binding['type'] ?? PDO::PARAM_STR;
+        $stmt->bindValue($binding['name'], $binding['value'], $type);
+    }
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->execute();
-    return $stmt->fetchAll();
+
+    $rows = $stmt->fetchAll();
+    if (!$rows) {
+        return [];
+    }
+
+    $seen = [];
+    $unique = [];
+    foreach ($rows as $row) {
+        if (!isset($row['id'])) {
+            continue;
+        }
+        $matchId = (int)$row['id'];
+        if ($matchId <= 0 || isset($seen[$matchId])) {
+            continue;
+        }
+        $seen[$matchId] = true;
+        $unique[] = $row;
+    }
+
+    return $unique;
 }
 
 function count_user_tournament_titles(int $userId): int
