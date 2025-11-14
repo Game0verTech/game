@@ -93,24 +93,6 @@ $decodeMatchMeta = static function ($meta): array {
     return [];
 };
 
-$metaPlayerId = static function (?array $meta): ?int {
-    if (!$meta) {
-        return null;
-    }
-
-    if (isset($meta['id']) && is_numeric($meta['id'])) {
-        $id = (int)$meta['id'];
-        return $id > 0 ? $id : null;
-    }
-
-    if (isset($meta['player_id']) && is_numeric($meta['player_id'])) {
-        $id = (int)$meta['player_id'];
-        return $id > 0 ? $id : null;
-    }
-
-    return null;
-};
-
 $buildTournamentPayload = static function (array $tournament, array $players, bool $isRegistered) use (&$loadErrors): string {
     $playerIds = array_map(static fn($player) => (int)$player['user_id'], $players);
     $playerRoster = array_map(
@@ -212,12 +194,12 @@ foreach ($recentMatchesRaw as $match) {
 
     $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
     if ($player1Id <= 0 && isset($meta['player1']) && is_array($meta['player1'])) {
-        $player1Id = $metaPlayerId($meta['player1']) ?? 0;
+        $player1Id = stats_meta_player_id($meta['player1']) ?? 0;
     }
 
     $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
     if ($player2Id <= 0 && isset($meta['player2']) && is_array($meta['player2'])) {
-        $player2Id = $metaPlayerId($meta['player2']) ?? 0;
+        $player2Id = stats_meta_player_id($meta['player2']) ?? 0;
     }
 
     $side = null;
@@ -228,6 +210,15 @@ foreach ($recentMatchesRaw as $match) {
     }
 
     $opponentId = $side === 1 ? $player2Id : ($side === 2 ? $player1Id : 0);
+    if ($side === null) {
+        $message = sprintf(
+            'Match %s does not reference the current user in player slots or metadata.',
+            isset($match['id']) ? (string)$match['id'] : 'unknown'
+        );
+        $loadErrors[] = $message;
+        error_log('[dashboard] ' . $message);
+        continue;
+    }
     try {
         $opponent = $opponentId ? get_user_by_id($opponentId) : null;
     } catch (Throwable $e) {
