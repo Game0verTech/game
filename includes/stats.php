@@ -151,6 +151,8 @@ function stats_build_user_match_filter(int $userId): array
     $userIdStr = (string)$userId;
     $quote = chr(34);
 
+    $likeEscape = " ESCAPE '\\\\'";
+
     if ($userId > 0) {
         $metaKeys = ['id', 'user_id', 'player_id'];
         foreach ($metaKeys as $key) {
@@ -158,14 +160,14 @@ function stats_build_user_match_filter(int $userId): array
             $placeholderInt = $placeholderBase . '_int';
             $placeholderStr = $placeholderBase . '_str';
 
-            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderInt . " ESCAPE '\\')";
+            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderInt . $likeEscape . ')';
             $bindings[] = [
                 'name' => $placeholderInt,
                 'value' => '%' . stats_escape_like($quote . $key . $quote . ':' . $userIdStr) . '%',
                 'type' => PDO::PARAM_STR,
             ];
 
-            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderStr . " ESCAPE '\\')";
+            $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) LIKE ' . $placeholderStr . $likeEscape . ')';
             $bindings[] = [
                 'name' => $placeholderStr,
                 'value' => '%' . stats_escape_like($quote . $key . $quote . ':' . $quote . $userIdStr . $quote) . '%',
@@ -177,14 +179,14 @@ function stats_build_user_match_filter(int $userId): array
     $username = stats_resolve_username($userId);
     if ($username !== null) {
         $usernameLower = strtolower($username);
-        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_username ESCAPE \'\\\')';
+        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_username' . $likeEscape . ')';
         $bindings[] = [
             'name' => ':meta_username',
             'value' => '%' . stats_escape_like($quote . 'username' . $quote . ':' . $quote . $usernameLower . $quote) . '%',
             'type' => PDO::PARAM_STR,
         ];
 
-        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_name ESCAPE \'\\\')';
+        $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) LIKE :meta_name' . $likeEscape . ')';
         $bindings[] = [
             'name' => ':meta_name',
             'value' => '%' . stats_escape_like($quote . 'name' . $quote . ':' . $quote . $usernameLower . $quote) . '%',
