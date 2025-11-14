@@ -154,31 +154,78 @@ function stats_normalize_match_context(array $match): array
         $player2Id = stats_meta_player_id($player2Meta) ?? 0;
     }
 
+    $player1Id = $player1Id > 0 ? $player1Id : null;
+    $player2Id = $player2Id > 0 ? $player2Id : null;
+
+    $score1 = isset($match['score1']) && is_numeric($match['score1']) ? (int)$match['score1'] : null;
+    $score2 = isset($match['score2']) && is_numeric($match['score2']) ? (int)$match['score2'] : null;
+
     $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : 0;
+    $winnerId = $winnerId > 0 ? $winnerId : null;
     $winnerMeta = isset($meta['winner']) && is_array($meta['winner']) ? $meta['winner'] : null;
-    if ($winnerId <= 0 && $winnerMeta) {
-        $winnerId = stats_meta_player_id($winnerMeta) ?? 0;
-        if ($winnerId <= 0 && isset($winnerMeta['slot'])) {
-            $slot = (int)$winnerMeta['slot'];
-            if ($slot === 1 && $player1Id > 0) {
-                $winnerId = $player1Id;
-            } elseif ($slot === 2 && $player2Id > 0) {
-                $winnerId = $player2Id;
+    $winnerSlot = null;
+
+    if ($winnerMeta) {
+        $metaWinnerId = stats_meta_player_id($winnerMeta);
+        if ($metaWinnerId) {
+            $winnerId = $winnerId ?? $metaWinnerId;
+        }
+
+        if (isset($winnerMeta['slot'])) {
+            $slotValue = $winnerMeta['slot'];
+            $slot = null;
+
+            if (is_numeric($slotValue)) {
+                $slot = (int)$slotValue;
+            } elseif (is_string($slotValue)) {
+                $normalizedSlot = strtolower(trim($slotValue));
+                if (in_array($normalizedSlot, ['player1', 'p1', 'home', 'one'], true)) {
+                    $slot = 1;
+                } elseif (in_array($normalizedSlot, ['player2', 'p2', 'away', 'two'], true)) {
+                    $slot = 2;
+                }
             }
+
+            if ($slot === 1 || $slot === 2) {
+                $winnerSlot = $slot;
+            }
+        }
+    }
+
+    if ($winnerId !== null) {
+        if ($player1Id !== null && $winnerId === $player1Id) {
+            $winnerSlot = $winnerSlot ?? 1;
+        } elseif ($player2Id !== null && $winnerId === $player2Id) {
+            $winnerSlot = $winnerSlot ?? 2;
+        }
+    }
+
+    if ($winnerSlot === null && $score1 !== null && $score2 !== null && $score1 !== $score2) {
+        $winnerSlot = $score1 > $score2 ? 1 : 2;
+    }
+
+    if ($winnerId === null && $winnerSlot !== null) {
+        if ($winnerSlot === 1 && $player1Id !== null) {
+            $winnerId = $player1Id;
+        } elseif ($winnerSlot === 2 && $player2Id !== null) {
+            $winnerId = $player2Id;
         }
     }
 
     return [
         'meta' => $meta,
         'player1' => [
-            'id' => $player1Id > 0 ? $player1Id : null,
+            'id' => $player1Id,
             'name' => stats_meta_player_name($player1Meta),
+            'score' => $score1,
         ],
         'player2' => [
-            'id' => $player2Id > 0 ? $player2Id : null,
+            'id' => $player2Id,
             'name' => stats_meta_player_name($player2Meta),
+            'score' => $score2,
         ],
-        'winner_id' => $winnerId > 0 ? $winnerId : null,
+        'winner_id' => $winnerId,
+        'winner_slot' => $winnerSlot,
     ];
 }
 
@@ -295,14 +342,38 @@ function calculate_user_stat_snapshot(int $userId): ?array
                 continue;
             }
 
+            $userSlot = null;
+            if ($player1Id === $userId) {
+                $userSlot = 1;
+            } elseif ($player2Id === $userId) {
+                $userSlot = 2;
+            }
+
             $winnerId = $context['winner_id'];
-            if ($winnerId === null) {
+            $winnerSlot = $context['winner_slot'] ?? null;
+
+            if ($winnerId === null && $winnerSlot !== null) {
+                if ($winnerSlot === 1 && $player1Id !== null) {
+                    $winnerId = $player1Id;
+                } elseif ($winnerSlot === 2 && $player2Id !== null) {
+                    $winnerId = $player2Id;
+                }
+            }
+
+            if ($winnerId === null && ($winnerSlot === null || $userSlot === null)) {
                 $pendingMatches++;
                 continue;
             }
 
             $matchesPlayed++;
-            $isWin = $winnerId === $userId;
+            $isWin = false;
+
+            if ($winnerId !== null) {
+                $isWin = $winnerId === $userId;
+            } elseif ($winnerSlot !== null && $userSlot !== null) {
+                $isWin = $winnerSlot === $userSlot;
+            }
+
             $recentForm[] = $isWin ? 'W' : 'L';
 
             if ($isWin) {
@@ -472,6 +543,7 @@ function recent_results(int $userId, int $limit = 5): array
         $seenMatches[$matchId] = true;
 
         $isPlayerOne = $player1['id'] === $userId;
+        $userSlot = $isPlayerOne ? 1 : 2;
         $opponentMetaName = $isPlayerOne ? $player2['name'] : $player1['name'];
         $opponentId = $isPlayerOne ? $player2['id'] : $player1['id'];
         $opponentName = $opponentMetaName ?: 'TBD';
@@ -495,8 +567,38 @@ function recent_results(int $userId, int $limit = 5): array
         }
 
         $winnerId = $context['winner_id'];
-        $isFinished = $winnerId !== null;
-        $isWinner = $isFinished && $winnerId === $userId;
+        $winnerSlot = $context['winner_slot'] ?? null;
+        $score1 = $player1['score'];
+        $score2 = $player2['score'];
+        $hasScores = $score1 !== null && $score2 !== null;
+
+        if ($winnerId === null && $winnerSlot !== null) {
+            if ($winnerSlot === 1 && $player1['id'] !== null) {
+                $winnerId = $player1['id'];
+            } elseif ($winnerSlot === 2 && $player2['id'] !== null) {
+                $winnerId = $player2['id'];
+            }
+        }
+
+        $isFinished = $winnerId !== null || ($winnerSlot !== null && $userSlot !== null);
+        $isWinner = false;
+
+        if ($winnerId !== null) {
+            $isWinner = $winnerId === $userId;
+        } elseif ($winnerSlot !== null) {
+            $isWinner = $winnerSlot === $userSlot;
+        }
+
+        $scoreFor = null;
+        $scoreAgainst = null;
+
+        if ($hasScores) {
+            $scoreFor = $isPlayerOne ? $score1 : $score2;
+            $scoreAgainst = $isPlayerOne ? $score2 : $score1;
+        } elseif ($isFinished) {
+            $scoreFor = $isWinner ? 1 : 0;
+            $scoreAgainst = $isWinner ? 0 : 1;
+        }
 
         $results[] = [
             'id' => $matchId,
@@ -506,8 +608,8 @@ function recent_results(int $userId, int $limit = 5): array
             'opponent' => $opponentName,
             'result' => $isFinished ? ($isWinner ? 'win' : 'loss') : 'pending',
             'is_winner' => $isWinner,
-            'score_for' => $isFinished ? ($isWinner ? 1 : 0) : null,
-            'score_against' => $isFinished ? ($isWinner ? 0 : 1) : null,
+            'score_for' => $scoreFor,
+            'score_against' => $scoreAgainst,
             'stage' => $row['stage'] ?? null,
             'round' => isset($row['round']) ? (int)$row['round'] : null,
         ];
