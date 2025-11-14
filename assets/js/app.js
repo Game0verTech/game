@@ -3821,6 +3821,13 @@ $(function () {
         if (modal.hasClass('js-tournament-viewer')) {
             resetTournamentViewer(modal);
         }
+        var onClose = modal.data('onClose');
+        if (typeof onClose === 'function') {
+            modal.removeData('onClose');
+            window.requestAnimationFrame(function () {
+                onClose();
+            });
+        }
         if (activeModal && modal[0] === activeModal[0]) {
             activeModal = null;
         }
@@ -3918,7 +3925,7 @@ $(function () {
         if (!tournament) {
             return;
         }
-        var config = $.extend({ expandPlayers: false }, options);
+        var config = $.extend({ expandPlayers: false, onClose: null }, options);
         ensurePlayerChecklist(modal);
         var form = modal.find('form');
         if (form.length && typeof form[0].reset === 'function') {
@@ -3963,6 +3970,11 @@ $(function () {
             checkbox.prop('checked', isChecked);
         });
         renderSelectedPlayers(modal);
+        if (typeof config.onClose === 'function') {
+            modal.data('onClose', config.onClose);
+        } else {
+            modal.removeData('onClose');
+        }
         openModal(modal);
     }
 
@@ -4145,7 +4157,12 @@ $(function () {
             return;
         }
         closeModal(viewerModal, true);
-        openSettingsModal(modal, tournamentId, { expandPlayers: true });
+        openSettingsModal(modal, tournamentId, {
+            expandPlayers: true,
+            onClose: function () {
+                openTournamentViewerModal(tournamentId);
+            }
+        });
     });
 
     $(document).on('click', '[data-view-bracket]', function (event) {

@@ -2170,10 +2170,10 @@ button.danger:focus-visible,
     position: relative;
     overflow: auto;
     padding: clamp(32px, 4vw, 52px);
-    border: 1px solid rgba(30, 144, 255, 0.28);
+    border: 1px solid rgba(86, 116, 148, 0.35);
     border-radius: 26px;
-    background: radial-gradient(circle at top left, rgba(30, 144, 255, 0.12), transparent 55%),
-        linear-gradient(150deg, rgba(8, 14, 26, 0.95), rgba(6, 12, 24, 0.9));
+    background: radial-gradient(circle at top left, rgba(142, 178, 214, 0.22), transparent 55%),
+        linear-gradient(150deg, rgba(62, 78, 98, 0.94), rgba(46, 60, 78, 0.9));
     box-shadow: var(--shadow-elevated);
     max-width: 100%;
     cursor: grab;
