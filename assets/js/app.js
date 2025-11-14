@@ -3956,8 +3956,23 @@ $(function () {
         modal.find('.js-action-title').text(tournament.name || 'Tournament');
         modal.find('.js-action-schedule').text(formatTournamentSchedule(tournament));
         modal.find('.js-open-tournament').attr('href', '/?page=admin&t=view&id=' + tournamentId);
+        modal.find('.js-action-tournament-id').val(tournamentId);
         openModal(modal);
     }
+
+    $(document).on('click', '[data-viewer-open-actions]', function (event) {
+        event.preventDefault();
+        var viewerModal = $('#tournamentViewerModal');
+        if (!viewerModal.length) {
+            return;
+        }
+        var tournamentId = parseInt(viewerModal.data('tournamentId'), 10);
+        if (!tournamentId) {
+            return;
+        }
+        closeModal(viewerModal, true);
+        openActionsModal(tournamentId);
+    });
 
     $(document).on('click', '[data-view-bracket]', function (event) {
         event.preventDefault();

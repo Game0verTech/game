@@ -1252,6 +1252,12 @@ body.modal-open {
     align-items: start;
 }
 
+.tournament-viewer__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+}
+
 .tournament-viewer__section {
     display: flex;
     flex-direction: column;
@@ -1332,6 +1338,36 @@ body.modal-open {
     flex-wrap: wrap;
     gap: 12px;
     margin-top: 12px;
+}
+
+.tournament-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.tournament-actions-list {
+    display: grid;
+    gap: 10px;
+}
+
+.tournament-actions-list form {
+    display: flex;
+}
+
+.tournament-actions-list .btn {
+    width: 100%;
+}
+
+.player-management {
+    display: grid;
+    gap: 16px;
+}
+
+.section-label {
+    font-weight: 600;
+    margin-bottom: 6px;
 }
 
 @media (max-width: 900px) {
