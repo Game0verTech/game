@@ -348,7 +348,13 @@ function remove_player_from_tournament(int $tournamentId, int $userId): bool
 
 function tournament_players(int $tournamentId): array
 {
-    $sql = 'SELECT tp.*, u.username FROM tournament_players tp INNER JOIN users u ON tp.user_id = u.id WHERE tp.tournament_id = :tid ORDER BY COALESCE(tp.seed, tp.id)';
+    ensure_user_profile_schema();
+    $sql = 'SELECT tp.*, u.username, up.display_name, up.icon_path
+            FROM tournament_players tp
+            INNER JOIN users u ON tp.user_id = u.id
+            LEFT JOIN user_profiles up ON up.user_id = u.id
+            WHERE tp.tournament_id = :tid
+            ORDER BY COALESCE(tp.seed, tp.id)';
     $stmt = db()->prepare($sql);
     $stmt->execute([':tid' => $tournamentId]);
     return $stmt->fetchAll();
@@ -527,6 +533,11 @@ function ensure_round_robin_final_match(int $tournamentId, array $leaders): void
         return;
     }
 
+    $player1User = get_user_by_id($player1);
+    $player2User = get_user_by_id($player2);
+    $player1Profile = get_user_profile($player1);
+    $player2Profile = get_user_profile($player2);
+
     $pdo = db();
     $stmt = $pdo->prepare("SELECT * FROM tournament_matches WHERE tournament_id = :tid AND stage = 'finals' ORDER BY round ASC, match_index ASC LIMIT 1");
     $stmt->execute([':tid' => $tournamentId]);
@@ -538,11 +549,17 @@ function ensure_round_robin_final_match(int $tournamentId, array $leaders): void
         'match_number' => 1,
         'player1' => [
             'id' => $player1,
-            'name' => $leaders[0]['name'] ?? ('Player ' . $player1),
+            'name' => $leaders[0]['name'] ?? ($player1User['username'] ?? ('Player ' . $player1)),
+            'username' => $player1User['username'] ?? null,
+            'display_name' => $player1Profile['display_name'] ?? null,
+            'profile_url' => isset($player1User['username']) ? user_profile_url($player1User['username']) : null,
         ],
         'player2' => [
             'id' => $player2,
-            'name' => $leaders[1]['name'] ?? ('Player ' . $player2),
+            'name' => $leaders[1]['name'] ?? ($player2User['username'] ?? ('Player ' . $player2)),
+            'username' => $player2User['username'] ?? null,
+            'display_name' => $player2Profile['display_name'] ?? null,
+            'profile_url' => isset($player2User['username']) ? user_profile_url($player2User['username']) : null,
         ],
     ];
 
@@ -1074,8 +1091,12 @@ function build_round_robin_groups(array $players, array $matchRecords = []): arr
         $homeIndex = $playerIndexMap[$player1Id];
         $awayIndex = $playerIndexMap[$player2Id];
 
-        $player1Name = $record['player1_name'] ?? $teams[$homeIndex]['name'] ?? 'TBD';
-        $player2Name = $record['player2_name'] ?? $teams[$awayIndex]['name'] ?? 'TBD';
+        $player1Username = $record['player1_name'] ?? null;
+        $player2Username = $record['player2_name'] ?? null;
+        $player1Display = $record['player1_display_name'] ?? null;
+        $player2Display = $record['player2_display_name'] ?? null;
+        $player1Name = $player1Display ?? $player1Username ?? $teams[$homeIndex]['name'] ?? 'TBD';
+        $player2Name = $player2Display ?? $player2Username ?? $teams[$awayIndex]['name'] ?? 'TBD';
 
         $winnerId = isset($record['winner_user_id']) ? (int)$record['winner_user_id'] : null;
         $winnerSlot = null;
@@ -1087,7 +1108,8 @@ function build_round_robin_groups(array $players, array $matchRecords = []): arr
             }
         }
 
-        $winnerName = $record['winner_name'] ?? null;
+        $winnerDisplay = $record['winner_display_name'] ?? null;
+        $winnerName = $winnerDisplay ?? ($record['winner_name'] ?? null);
         if (!$winnerName && $winnerSlot !== null) {
             $winnerName = $winnerSlot === 1 ? $player1Name : $player2Name;
         }
@@ -1102,11 +1124,17 @@ function build_round_robin_groups(array $players, array $matchRecords = []): arr
                 'id' => $player1Id,
                 'name' => $player1Name,
                 'team_index' => $homeIndex,
+                'username' => $player1Username,
+                'display_name' => $player1Display,
+                'profile_url' => $player1Username ? user_profile_url($player1Username) : null,
             ],
             'player2' => [
                 'id' => $player2Id,
                 'name' => $player2Name,
                 'team_index' => $awayIndex,
+                'username' => $player2Username,
+                'display_name' => $player2Display,
+                'profile_url' => $player2Username ? user_profile_url($player2Username) : null,
             ],
         ];
 
@@ -1116,6 +1144,11 @@ function build_round_robin_groups(array $players, array $matchRecords = []): arr
                 'name' => $winnerName ?? '',
                 'slot' => $winnerSlot,
                 'team_index' => $winnerSlot === 1 ? $homeIndex : $awayIndex,
+                'username' => $winnerSlot === 1 ? $player1Username : $player2Username,
+                'display_name' => $winnerDisplay,
+                'profile_url' => ($winnerSlot === 1 ? $player1Username : $player2Username)
+                    ? user_profile_url($winnerSlot === 1 ? $player1Username : $player2Username)
+                    : null,
             ];
         }
 
@@ -1138,6 +1171,15 @@ function build_round_robin_groups(array $players, array $matchRecords = []): arr
             'id' => (int)$team['id'],
             'name' => (string)$team['name'],
         ];
+
+        if (!empty($team['username'])) {
+            $entry['username'] = (string)$team['username'];
+            $entry['profile_url'] = user_profile_url($team['username']);
+        }
+
+        if (!empty($team['display_name'])) {
+            $entry['display_name'] = (string)$team['display_name'];
+        }
 
         if (array_key_exists('player_id', $team) && $team['player_id'] !== null) {
             $entry['player_id'] = (int)$team['player_id'];
@@ -2056,9 +2098,13 @@ function next_power_of_two(int $number): int
 function single_elimination_pairs(array $players): array
 {
     $slots = array_map(static function ($player) {
+        $username = $player['username'] ?? null;
         return [
             'id' => isset($player['user_id']) ? (int)$player['user_id'] : null,
-            'name' => $player['username'] ?? 'TBD',
+            'name' => $player['display_name'] ?? $username ?? 'TBD',
+            'username' => $username,
+            'display_name' => $player['display_name'] ?? null,
+            'profile_url' => $username ? user_profile_url($username) : null,
         ];
     }, $players);
 
@@ -2675,14 +2721,21 @@ function save_snapshot(int $tournamentId, string $type, array $payload, int $use
 
 function tournament_matches(int $tournamentId): array
 {
-    $sql = 'SELECT tm.*, 
+    ensure_user_profile_schema();
+    $sql = 'SELECT tm.*,
                    u1.username AS player1_name,
+                   up1.display_name AS player1_display_name,
                    u2.username AS player2_name,
-                   uw.username AS winner_name
+                   up2.display_name AS player2_display_name,
+                   uw.username AS winner_name,
+                   upw.display_name AS winner_display_name
             FROM tournament_matches tm
             LEFT JOIN users u1 ON tm.player1_user_id = u1.id
+            LEFT JOIN user_profiles up1 ON up1.user_id = tm.player1_user_id
             LEFT JOIN users u2 ON tm.player2_user_id = u2.id
+            LEFT JOIN user_profiles up2 ON up2.user_id = tm.player2_user_id
             LEFT JOIN users uw ON tm.winner_user_id = uw.id
+            LEFT JOIN user_profiles upw ON upw.user_id = tm.winner_user_id
             WHERE tm.tournament_id = :tid
             ORDER BY tm.stage, tm.round, tm.match_index';
     $stmt = db()->prepare($sql);

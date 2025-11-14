@@ -904,12 +904,31 @@ function recent_results(int $userId, int $limit = 5): array
 
     $results = [];
     foreach ($matches as $match) {
+        $opponentId = $match['opponent_id'] ?? null;
+        $opponentUsername = null;
+        $opponentLabel = $match['opponent_name'] ?? 'TBD';
+        if ($opponentId) {
+            $opponentAccount = get_user_by_id((int)$opponentId);
+            if ($opponentAccount) {
+                $opponentUsername = $opponentAccount['username'] ?? null;
+                try {
+                    $opponentProfile = get_user_profile((int)$opponentAccount['id']);
+                    if (!empty($opponentProfile['display_name'])) {
+                        $opponentLabel = $opponentProfile['display_name'];
+                    }
+                } catch (Throwable $e) {
+                    error_log('[recent_results] Failed to load opponent profile: ' . $e->getMessage());
+                }
+            }
+        }
+
         $results[] = [
             'id' => $match['id'] ?? null,
             'tournament_id' => $match['tournament_id'] ?? null,
             'tournament' => $match['tournament_name'] ?? 'Tournament',
-            'opponent_id' => $match['opponent_id'] ?? null,
-            'opponent' => $match['opponent_name'] ?? 'TBD',
+            'opponent_id' => $opponentId,
+            'opponent_username' => $opponentUsername,
+            'opponent' => $opponentLabel,
             'result' => $match['result'] ?? (!empty($match['is_finished']) ? (!empty($match['is_win']) ? 'win' : 'loss') : 'pending'),
             'is_winner' => !empty($match['is_win']),
             'score_for' => $match['score_for'] ?? null,

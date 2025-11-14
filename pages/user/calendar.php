@@ -22,10 +22,17 @@ foreach ($tournaments as $tournament) {
         'player_count' => count($players),
         'players' => array_map(static fn($player) => (int)$player['user_id'], $players),
         'player_roster' => array_map(
-            static fn($player) => [
-                'id' => (int)$player['user_id'],
-                'name' => $player['username'],
-            ],
+            static function ($player) {
+                $username = $player['username'] ?? 'Player';
+                return [
+                    'id' => (int)$player['user_id'],
+                    'name' => $username,
+                    'username' => $username,
+                    'display_name' => $player['display_name'] ?? null,
+                    'profile_url' => user_profile_url($username),
+                    'icon_url' => resolve_user_icon_url($player['icon_path'] ?? null),
+                ];
+            },
             $players
         ),
         'is_registered' => $isRegistered,

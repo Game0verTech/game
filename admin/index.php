@@ -159,10 +159,13 @@ $config = load_config();
                             } elseif ((int)$account['is_active'] === 1) {
                                 $status = 'Active';
                             }
+                            $accountUsername = $account['username'];
+                            $accountUsernameSafe = sanitize($accountUsername);
+                            $accountProfileLink = user_profile_link($accountUsername);
                         ?>
                         <tr>
                             <td><?= (int)$account['id'] ?></td>
-                            <td><?= sanitize($account['username']) ?></td>
+                            <td><?= $accountProfileLink ?></td>
                             <td><?= sanitize($account['email']) ?></td>
                             <td><?= $status ?></td>
                             <td><?= ucfirst($account['role']) ?></td>
@@ -181,7 +184,7 @@ $config = load_config();
                                                 <option value="manager" <?= $account['role'] === 'manager' ? 'selected' : '' ?>>Manager</option>
                                                 <option value="player" <?= $account['role'] === 'player' ? 'selected' : '' ?>>Player</option>
                                             </select>
-                                            <button type="submit" class="icon-btn" data-tooltip="Save role" aria-label="Save role for <?= sanitize($account['username']) ?>">
+                                            <button type="submit" class="icon-btn" data-tooltip="Save role" aria-label="Save role for <?= $accountUsernameSafe ?>">
                                                 <span aria-hidden="true">💾</span>
                                                 <span class="sr-only">Save role</span>
                                             </button>
@@ -191,7 +194,7 @@ $config = load_config();
                                                 <input type="hidden" name="action" value="verify_user">
                                                 <input type="hidden" name="_token" value="<?= csrf_token() ?>">
                                                 <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
-                                                <button type="submit" class="icon-btn" data-tooltip="Verify user" aria-label="Verify <?= sanitize($account['username']) ?>">
+                                                <button type="submit" class="icon-btn" data-tooltip="Verify user" aria-label="Verify <?= $accountUsernameSafe ?>">
                                                     <span aria-hidden="true">✔️</span>
                                                     <span class="sr-only">Verify user</span>
                                                 </button>
@@ -202,22 +205,22 @@ $config = load_config();
                                             <input type="hidden" name="_token" value="<?= csrf_token() ?>">
                                             <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
                                             <?php if ($isBanned): ?>
-                                                <button type="submit" class="icon-btn" data-tooltip="Unban user" aria-label="Unban <?= sanitize($account['username']) ?>">
+                                                <button type="submit" class="icon-btn" data-tooltip="Unban user" aria-label="Unban <?= $accountUsernameSafe ?>">
                                                     <span aria-hidden="true">🔓</span>
                                                     <span class="sr-only">Unban user</span>
                                                 </button>
                                             <?php else: ?>
-                                                <button type="submit" class="icon-btn" data-tooltip="Ban user" aria-label="Ban <?= sanitize($account['username']) ?>">
+                                                <button type="submit" class="icon-btn" data-tooltip="Ban user" aria-label="Ban <?= $accountUsernameSafe ?>">
                                                     <span aria-hidden="true">🚫</span>
                                                     <span class="sr-only">Ban user</span>
                                                 </button>
                                             <?php endif; ?>
                                         </form>
-                                        <form method="post" action="/api/admin.php" class="inline js-confirm" data-confirm="Delete <?= sanitize($account['username']) ?>? This cannot be undone.">
+                                        <form method="post" action="/api/admin.php" class="inline js-confirm" data-confirm="Delete <?= $accountUsernameSafe ?>? This cannot be undone.">
                                             <input type="hidden" name="action" value="delete_user">
                                             <input type="hidden" name="_token" value="<?= csrf_token() ?>">
                                             <input type="hidden" name="user_id" value="<?= (int)$account['id'] ?>">
-                                            <button type="submit" class="icon-btn danger" data-tooltip="Delete user" aria-label="Delete <?= sanitize($account['username']) ?>">
+                                            <button type="submit" class="icon-btn danger" data-tooltip="Delete user" aria-label="Delete <?= $accountUsernameSafe ?>">
                                                 <span aria-hidden="true">🗑️</span>
                                                 <span class="sr-only">Delete user</span>
                                             </button>

@@ -67,10 +67,17 @@ $recentForm = isset($stats['recent_form']) && is_array($stats['recent_form']) ? 
 $buildTournamentPayload = static function (array $tournament, array $players, bool $isRegistered) use (&$loadErrors): string {
     $playerIds = array_map(static fn($player) => (int)$player['user_id'], $players);
     $playerRoster = array_map(
-        static fn($player) => [
-            'id' => (int)$player['user_id'],
-            'name' => $player['username'],
-        ],
+        static function ($player) {
+            $username = $player['username'] ?? 'Player';
+            return [
+                'id' => (int)$player['user_id'],
+                'name' => $username,
+                'username' => $username,
+                'display_name' => $player['display_name'] ?? null,
+                'profile_url' => user_profile_url($username),
+                'icon_url' => resolve_user_icon_url($player['icon_path'] ?? null),
+            ];
+        },
         $players
     );
 
@@ -164,6 +171,8 @@ foreach ($recentMatchesRaw as $match) {
     $recentMatches[] = [
         'tournament' => $match['tournament'] ?? 'Tournament',
         'opponent' => $match['opponent'] ?? 'TBD',
+        'opponent_id' => $match['opponent_id'] ?? null,
+        'opponent_username' => $match['opponent_username'] ?? null,
         'score_for' => $match['score_for'] ?? null,
         'score_against' => $match['score_against'] ?? null,
         'is_winner' => !empty($match['is_winner']),
@@ -174,6 +183,8 @@ foreach ($recentMatchesRaw as $match) {
 }
 
 $loadErrors = array_values(array_unique($loadErrors));
+$userDisplayName = $user['display_name'] ?? $user['username'];
+$userProfileLink = user_profile_link($user['username'], $userDisplayName);
 ?>
 <div class="player-dashboard">
     <?php if ($loadErrors): ?>
@@ -191,7 +202,7 @@ $loadErrors = array_values(array_unique($loadErrors));
         <div class="player-summary">
             <div>
                 <p class="muted">Welcome back</p>
-                <h2><?= sanitize($user['username']) ?></h2>
+                <h2><?= $userProfileLink ?></h2>
                 <?php if ($memberSince): ?>
                     <div class="player-summary__meta">
                         <span><?= sanitize('Member since ' . $memberSince) ?></span>
@@ -282,7 +293,15 @@ $loadErrors = array_values(array_unique($loadErrors));
                         <li class="recent-results__item">
                             <div class="recent-results__meta">
                                 <span class="recent-results__tournament"><?= sanitize($match['tournament']) ?></span>
-                                <span class="recent-results__opponent">vs. <?= sanitize($match['opponent']) ?></span>
+                                <?php
+                                    $opponentName = $match['opponent'] ?? 'TBD';
+                                    if (!empty($match['opponent_username'])) {
+                                        $opponentLink = user_profile_link($match['opponent_username'], $opponentName);
+                                    } else {
+                                        $opponentLink = sanitize($opponentName);
+                                    }
+                                ?>
+                                <span class="recent-results__opponent">vs. <?= $opponentLink ?></span>
                                 <?php if ($stageLabel): ?>
                                     <span class="recent-results__stage muted"><?= sanitize($stageLabel) ?></span>
                                 <?php endif; ?>
