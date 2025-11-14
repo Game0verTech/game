@@ -31,6 +31,88 @@ function ensure_user_stats_table(): bool
     return $ensured;
 }
 
+function stats_decode_match_meta($meta): array
+{
+    if (function_exists('decode_match_meta')) {
+        return decode_match_meta($meta);
+    }
+
+    if (is_array($meta)) {
+        return $meta;
+    }
+
+    if (is_string($meta) && $meta !== '') {
+        $decoded = json_decode($meta, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
+
+    return [];
+}
+
+function stats_lookup_user_id_by_name(string $name): ?int
+{
+    static $cache = [];
+
+    $normalized = strtolower(trim($name));
+    if ($normalized === '' || $normalized === 'bye' || $normalized === 'tbd') {
+        return null;
+    }
+
+    if (array_key_exists($normalized, $cache)) {
+        return $cache[$normalized];
+    }
+
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare('SELECT id FROM users WHERE username = :username LIMIT 1');
+        $stmt->execute([':username' => $name]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(:username) LIMIT 1');
+            $stmt->execute([':username' => $name]);
+            $row = $stmt->fetch();
+        }
+
+        $cache[$normalized] = $row ? (int)$row['id'] : null;
+    } catch (Throwable $e) {
+        error_log('Failed to lookup user id for stats: ' . $e->getMessage());
+        $cache[$normalized] = null;
+    }
+
+    return $cache[$normalized];
+}
+
+function stats_meta_player_id(?array $meta): ?int
+{
+    if (!$meta) {
+        return null;
+    }
+
+    foreach (['id', 'user_id', 'player_id'] as $key) {
+        if (isset($meta[$key]) && is_numeric($meta[$key])) {
+            $id = (int)$meta[$key];
+            if ($id > 0) {
+                return $id;
+            }
+        }
+    }
+
+    $nameKeys = ['username', 'name'];
+    foreach ($nameKeys as $nameKey) {
+        if (!empty($meta[$nameKey]) && is_string($meta[$nameKey])) {
+            $resolved = stats_lookup_user_id_by_name($meta[$nameKey]);
+            if ($resolved) {
+                return $resolved;
+            }
+        }
+    }
+
+    return null;
+}
+
 function is_final_stage_label(?string $stage): bool
 {
     if ($stage === null) {
@@ -97,14 +179,48 @@ function calculate_user_stat_snapshot(int $userId): ?array
             }
         }
 
-        $matchesStmt = $pdo->prepare(
+        $matches = [];
+        $matchMap = [];
+
+        $tournamentIds = array_values(array_filter(array_map(
+            static function ($row) {
+                return isset($row['id']) ? (int)$row['id'] : 0;
+            },
+            $tournaments
+        )));
+
+        if ($tournamentIds) {
+            $placeholders = implode(',', array_fill(0, count($tournamentIds), '?'));
+            $sql = sprintf(
+                'SELECT tm.* FROM tournament_matches tm WHERE tm.tournament_id IN (%s) ORDER BY tm.id ASC',
+                $placeholders
+            );
+            $matchesStmt = $pdo->prepare($sql);
+            $matchesStmt->execute($tournamentIds);
+            foreach ($matchesStmt->fetchAll() as $match) {
+                if (isset($match['id'])) {
+                    $matchMap[(int)$match['id']] = $match;
+                }
+            }
+        }
+
+        $directMatchesStmt = $pdo->prepare(
             'SELECT tm.*
              FROM tournament_matches tm
              WHERE tm.player1_user_id = :user OR tm.player2_user_id = :user
              ORDER BY tm.id ASC'
         );
-        $matchesStmt->execute([':user' => $userId]);
-        $matches = $matchesStmt->fetchAll();
+        $directMatchesStmt->execute([':user' => $userId]);
+        foreach ($directMatchesStmt->fetchAll() as $match) {
+            if (isset($match['id'])) {
+                $matchMap[(int)$match['id']] = $match;
+            }
+        }
+
+        if ($matchMap) {
+            ksort($matchMap);
+            $matches = array_values($matchMap);
+        }
 
         $wins = 0;
         $losses = 0;
@@ -122,14 +238,38 @@ function calculate_user_stat_snapshot(int $userId): ?array
         $currentResultStreak = 0;
 
         foreach ($matches as $match) {
+            $meta = [];
+            if (array_key_exists('meta', $match)) {
+                $meta = stats_decode_match_meta($match['meta']);
+            }
+
             $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
+            if ($player1Id <= 0) {
+                $player1Id = stats_meta_player_id(isset($meta['player1']) && is_array($meta['player1']) ? $meta['player1'] : null) ?? 0;
+            }
+
             $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
+            if ($player2Id <= 0) {
+                $player2Id = stats_meta_player_id(isset($meta['player2']) && is_array($meta['player2']) ? $meta['player2'] : null) ?? 0;
+            }
 
             if ($player1Id !== $userId && $player2Id !== $userId) {
                 continue;
             }
 
             $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : null;
+            if ($winnerId === null && isset($meta['winner']) && is_array($meta['winner'])) {
+                $winnerId = stats_meta_player_id($meta['winner']);
+                if ($winnerId === null && isset($meta['winner']['slot'])) {
+                    $slot = (int)$meta['winner']['slot'];
+                    if ($slot === 1 && $player1Id > 0) {
+                        $winnerId = $player1Id;
+                    } elseif ($slot === 2 && $player2Id > 0) {
+                        $winnerId = $player2Id;
+                    }
+                }
+            }
+
             $isFinalStage = is_final_stage_label($match['stage'] ?? null);
 
             $scoreFor = null;
@@ -299,11 +439,12 @@ function recent_results(int $userId, int $limit = 5): array
     $sql = 'SELECT tm.*, t.name as tournament_name
             FROM tournament_matches tm
             INNER JOIN tournaments t ON tm.tournament_id = t.id
-            WHERE (tm.player1_user_id = :user OR tm.player2_user_id = :user)
+            WHERE (tm.player1_user_id = :user1 OR tm.player2_user_id = :user2)
             ORDER BY tm.id DESC
             LIMIT :limit';
     $stmt = db()->prepare($sql);
-    $stmt->bindValue(':user', $userId, PDO::PARAM_INT);
+    $stmt->bindValue(':user1', $userId, PDO::PARAM_INT);
+    $stmt->bindValue(':user2', $userId, PDO::PARAM_INT);
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll();

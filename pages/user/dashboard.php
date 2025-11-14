@@ -4,13 +4,46 @@ $user = current_user();
 $pageTitle = 'Dashboard';
 require __DIR__ . '/../../templates/header.php';
 
-$stats = get_user_stat($user['id']);
-if (!is_array($stats)) {
+$loadErrors = [];
+
+try {
+    $stats = get_user_stat($user['id']);
+} catch (Throwable $e) {
+    $stats = [];
+    $message = 'Player statistics could not be loaded: ' . $e->getMessage();
+    $loadErrors[] = $message;
+    error_log('[dashboard] ' . $message);
+}
+if (!isset($stats) || !is_array($stats)) {
     $stats = [];
 }
-$recentMatchesRaw = recent_results($user['id']);
-$userTournamentsRaw = user_tournaments($user['id']);
-$allTournaments = list_tournaments();
+
+try {
+    $recentMatchesRaw = recent_results($user['id']);
+} catch (Throwable $e) {
+    $recentMatchesRaw = [];
+    $message = 'Recent match history failed to load: ' . $e->getMessage();
+    $loadErrors[] = $message;
+    error_log('[dashboard] ' . $message);
+}
+
+try {
+    $userTournamentsRaw = user_tournaments($user['id']);
+} catch (Throwable $e) {
+    $userTournamentsRaw = [];
+    $message = 'Unable to load your tournaments: ' . $e->getMessage();
+    $loadErrors[] = $message;
+    error_log('[dashboard] ' . $message);
+}
+
+try {
+    $allTournaments = list_tournaments();
+} catch (Throwable $e) {
+    $allTournaments = [];
+    $message = 'Upcoming tournaments list is unavailable: ' . $e->getMessage();
+    $loadErrors[] = $message;
+    error_log('[dashboard] ' . $message);
+}
 $tournamentWins = $stats['tournaments_won'] ?? count_user_tournament_titles($user['id']);
 
 $memberSince = isset($user['created_at']) ? date('F Y', strtotime($user['created_at'])) : null;
@@ -41,7 +74,44 @@ $activeTournaments = isset($stats['tournaments_active']) ? (int)$stats['tourname
 $completedTournaments = isset($stats['tournaments_completed']) ? (int)$stats['tournaments_completed'] : 0;
 $recentForm = isset($stats['recent_form']) && is_array($stats['recent_form']) ? $stats['recent_form'] : [];
 
-$buildTournamentPayload = static function (array $tournament, array $players, bool $isRegistered): string {
+$decodeMatchMeta = static function ($meta): array {
+    if (function_exists('decode_match_meta')) {
+        return decode_match_meta($meta);
+    }
+
+    if (is_array($meta)) {
+        return $meta;
+    }
+
+    if (is_string($meta) && $meta !== '') {
+        $decoded = json_decode($meta, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
+
+    return [];
+};
+
+$metaPlayerId = static function (?array $meta): ?int {
+    if (!$meta) {
+        return null;
+    }
+
+    if (isset($meta['id']) && is_numeric($meta['id'])) {
+        $id = (int)$meta['id'];
+        return $id > 0 ? $id : null;
+    }
+
+    if (isset($meta['player_id']) && is_numeric($meta['player_id'])) {
+        $id = (int)$meta['player_id'];
+        return $id > 0 ? $id : null;
+    }
+
+    return null;
+};
+
+$buildTournamentPayload = static function (array $tournament, array $players, bool $isRegistered) use (&$loadErrors): string {
     $playerIds = array_map(static fn($player) => (int)$player['user_id'], $players);
     $playerRoster = array_map(
         static fn($player) => [
@@ -51,18 +121,29 @@ $buildTournamentPayload = static function (array $tournament, array $players, bo
         $players
     );
 
-    return safe_json_encode([
-        'id' => (int)$tournament['id'],
-        'name' => $tournament['name'],
-        'status' => $tournament['status'],
-        'type' => $tournament['type'],
-        'description' => $tournament['description'],
-        'scheduled_at' => $tournament['scheduled_at'],
-        'location' => $tournament['location'],
-        'players' => $playerIds,
-        'player_roster' => $playerRoster,
-        'is_registered' => $isRegistered,
-    ]);
+    try {
+        return safe_json_encode([
+            'id' => (int)$tournament['id'],
+            'name' => $tournament['name'],
+            'status' => $tournament['status'],
+            'type' => $tournament['type'],
+            'description' => $tournament['description'],
+            'scheduled_at' => $tournament['scheduled_at'],
+            'location' => $tournament['location'],
+            'players' => $playerIds,
+            'player_roster' => $playerRoster,
+            'is_registered' => $isRegistered,
+        ]);
+    } catch (Throwable $e) {
+        $message = sprintf(
+            'Failed to encode tournament payload for tournament %d: %s',
+            isset($tournament['id']) ? (int)$tournament['id'] : 0,
+            $e->getMessage()
+        );
+        $loadErrors[] = $message;
+        error_log('[dashboard] ' . $message);
+        return '{}';
+    }
 };
 
 $upcomingTournaments = [];
@@ -71,8 +152,30 @@ foreach ($allTournaments as $tournament) {
         continue;
     }
     $tournamentId = (int)$tournament['id'];
-    $players = tournament_players($tournamentId);
-    $isRegistered = is_user_registered($tournamentId, $user['id']);
+    try {
+        $players = tournament_players($tournamentId);
+    } catch (Throwable $e) {
+        $players = [];
+        $message = sprintf(
+            'Unable to load players for tournament %d: %s',
+            $tournamentId,
+            $e->getMessage()
+        );
+        $loadErrors[] = $message;
+        error_log('[dashboard] ' . $message);
+    }
+    try {
+        $isRegistered = is_user_registered($tournamentId, $user['id']);
+    } catch (Throwable $e) {
+        $isRegistered = false;
+        $message = sprintf(
+            'Failed to check registration status for tournament %d: %s',
+            $tournamentId,
+            $e->getMessage()
+        );
+        $loadErrors[] = $message;
+        error_log('[dashboard] ' . $message);
+    }
     $upcomingTournaments[] = [
         'tournament' => $tournament,
         'players' => $players,
@@ -84,7 +187,18 @@ foreach ($allTournaments as $tournament) {
 $userTournaments = [];
 foreach ($userTournamentsRaw as $tournament) {
     $tournamentId = (int)$tournament['id'];
-    $players = tournament_players($tournamentId);
+    try {
+        $players = tournament_players($tournamentId);
+    } catch (Throwable $e) {
+        $players = [];
+        $message = sprintf(
+            'Unable to load your tournament roster for event %d: %s',
+            $tournamentId,
+            $e->getMessage()
+        );
+        $loadErrors[] = $message;
+        error_log('[dashboard] ' . $message);
+    }
     $userTournaments[] = [
         'tournament' => $tournament,
         'players' => $players,
@@ -94,30 +208,93 @@ foreach ($userTournamentsRaw as $tournament) {
 
 $recentMatches = [];
 foreach ($recentMatchesRaw as $match) {
+    $meta = array_key_exists('meta', $match) ? $decodeMatchMeta($match['meta']) : [];
+
     $player1Id = isset($match['player1_user_id']) ? (int)$match['player1_user_id'] : 0;
+    if ($player1Id <= 0 && isset($meta['player1']) && is_array($meta['player1'])) {
+        $player1Id = $metaPlayerId($meta['player1']) ?? 0;
+    }
+
     $player2Id = isset($match['player2_user_id']) ? (int)$match['player2_user_id'] : 0;
+    if ($player2Id <= 0 && isset($meta['player2']) && is_array($meta['player2'])) {
+        $player2Id = $metaPlayerId($meta['player2']) ?? 0;
+    }
+
     $side = null;
     if ($player1Id === $user['id']) {
         $side = 1;
     } elseif ($player2Id === $user['id']) {
         $side = 2;
     }
+
     $opponentId = $side === 1 ? $player2Id : ($side === 2 ? $player1Id : 0);
-    $opponent = $opponentId ? get_user_by_id($opponentId) : null;
+    try {
+        $opponent = $opponentId ? get_user_by_id($opponentId) : null;
+    } catch (Throwable $e) {
+        $opponent = null;
+        $message = sprintf(
+            'Failed to load opponent details for match %s: %s',
+            isset($match['id']) ? (string)$match['id'] : 'unknown',
+            $e->getMessage()
+        );
+        $loadErrors[] = $message;
+        error_log('[dashboard] ' . $message);
+    }
+
     $scoreFor = $side === 1 ? ($match['score1'] ?? null) : ($side === 2 ? ($match['score2'] ?? null) : null);
     $scoreAgainst = $side === 1 ? ($match['score2'] ?? null) : ($side === 2 ? ($match['score1'] ?? null) : null);
+
+    $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : null;
+    if ($winnerId === null && isset($meta['winner']) && is_array($meta['winner'])) {
+        if (isset($meta['winner']['id']) && is_numeric($meta['winner']['id'])) {
+            $winnerId = (int)$meta['winner']['id'];
+        } elseif (isset($meta['winner']['slot'])) {
+            $slot = (int)$meta['winner']['slot'];
+            if ($slot === 1 && $player1Id > 0) {
+                $winnerId = $player1Id;
+            } elseif ($slot === 2 && $player2Id > 0) {
+                $winnerId = $player2Id;
+            }
+        }
+    }
+
+    $opponentName = $opponent['username'] ?? null;
+    if (!$opponentName) {
+        if ($side === 1 && isset($meta['player2']['name'])) {
+            $opponentName = (string)$meta['player2']['name'];
+        } elseif ($side === 2 && isset($meta['player1']['name'])) {
+            $opponentName = (string)$meta['player1']['name'];
+        }
+    }
+    if (!$opponentName) {
+        $opponentName = 'TBD';
+    }
+
     $recentMatches[] = [
         'tournament' => $match['tournament_name'] ?? 'Tournament',
-        'opponent' => $opponent['username'] ?? 'TBD',
+        'opponent' => $opponentName,
         'score_for' => $scoreFor,
         'score_against' => $scoreAgainst,
-        'is_winner' => isset($match['winner_user_id']) ? (int)$match['winner_user_id'] === $user['id'] : false,
+        'is_winner' => $winnerId !== null ? $winnerId === (int)$user['id'] : false,
         'stage' => $match['stage'] ?? null,
         'round' => $match['round'] ?? null,
     ];
 }
+
+$loadErrors = array_values(array_unique($loadErrors));
 ?>
 <div class="player-dashboard">
+    <?php if ($loadErrors): ?>
+        <section class="card player-dashboard__card player-dashboard__errors" role="alert">
+            <h2>Dashboard Errors</h2>
+            <p class="muted">Some information could not be loaded. Details are shown below:</p>
+            <ul class="error-list">
+                <?php foreach ($loadErrors as $errorMessage): ?>
+                    <li><?= sanitize($errorMessage) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </section>
+    <?php endif; ?>
     <section class="card player-dashboard__summary">
         <div class="player-summary">
             <div>
@@ -402,5 +579,6 @@ foreach ($recentMatchesRaw as $match) {
         <?php endif; ?>
     </section>
 </div>
-<?php require __DIR__ . '/../../templates/partials/tournament-viewer-modal.php'; ?>
-<?php require __DIR__ . '/../../templates/footer.php';
+<?php
+require __DIR__ . '/../../templates/partials/tournament-viewer-modal.php';
+require __DIR__ . '/../../templates/footer.php';
