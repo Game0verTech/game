@@ -225,6 +225,65 @@ main.container {
     gap: clamp(14px, 3vw, 24px);
 }
 
+.player-recent-form {
+    margin-top: clamp(12px, 2vw, 20px);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.player-recent-form__label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.player-recent-form__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    gap: 8px;
+}
+
+.player-recent-form__item {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(14, 24, 42, 0.7);
+    color: var(--text-primary);
+}
+
+.player-recent-form__item--win {
+    background: rgba(30, 144, 255, 0.16);
+    border-color: rgba(30, 144, 255, 0.45);
+    color: var(--accent);
+}
+
+.player-recent-form__item--loss {
+    background: rgba(210, 64, 82, 0.18);
+    border-color: rgba(210, 64, 82, 0.45);
+    color: #ff879d;
+}
+
+.player-dashboard__notice {
+    margin-top: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: rgba(255, 217, 82, 0.12);
+    border: 1px solid rgba(255, 217, 82, 0.25);
+    color: rgba(255, 217, 82, 0.9);
+    font-size: 0.95rem;
+}
+
 .stat-card {
     padding: 18px;
     border-radius: 14px;
@@ -256,6 +315,40 @@ main.container {
 
 .player-dashboard__card {
     height: 100%;
+}
+
+.player-dashboard__insights {
+    display: flex;
+    flex-direction: column;
+}
+
+.insight-grid {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+}
+
+.insight-grid__item {
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(6, 12, 24, 0.6);
+}
+
+.insight-grid__item dt {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.insight-grid__item dd {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #ffffff;
 }
 
 .recent-results {
@@ -294,6 +387,12 @@ main.container {
 
 .recent-results__opponent {
     color: var(--text-secondary);
+}
+
+.recent-results__stage {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 .recent-results__score {
@@ -917,7 +1016,12 @@ body.modal-open {
 
 .calendar-day.is-today {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(30, 144, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(30, 144, 255, 0.25);
+    background: linear-gradient(150deg, rgba(30, 144, 255, 0.28), rgba(30, 144, 255, 0.08));
+}
+
+.calendar-day.is-today .calendar-day__date {
+    color: var(--accent);
 }
 
 .calendar-events {

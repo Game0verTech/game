@@ -5,18 +5,41 @@ $pageTitle = 'Dashboard';
 require __DIR__ . '/../../templates/header.php';
 
 $stats = get_user_stat($user['id']);
+if (!is_array($stats)) {
+    $stats = [];
+}
 $recentMatchesRaw = recent_results($user['id']);
 $userTournamentsRaw = user_tournaments($user['id']);
 $allTournaments = list_tournaments();
-$tournamentWins = count_user_tournament_titles($user['id']);
+$tournamentWins = $stats['tournaments_won'] ?? count_user_tournament_titles($user['id']);
 
 $memberSince = isset($user['created_at']) ? date('F Y', strtotime($user['created_at'])) : null;
 
-$winCount = $stats ? (int)$stats['wins'] : 0;
-$lossCount = $stats ? (int)$stats['losses'] : 0;
-$totalMatches = $winCount + $lossCount;
-$tournamentsPlayed = $stats ? (int)$stats['tournaments_played'] : 0;
-$winRate = $stats ? number_format((float)$stats['win_rate'], 2) : '0.00';
+$winCount = isset($stats['wins']) ? (int)$stats['wins'] : 0;
+$lossCount = isset($stats['losses']) ? (int)$stats['losses'] : 0;
+$totalMatches = isset($stats['matches_played']) ? (int)$stats['matches_played'] : ($winCount + $lossCount);
+$tournamentsPlayed = isset($stats['tournaments_played']) ? (int)$stats['tournaments_played'] : 0;
+$winRate = isset($stats['win_rate']) ? number_format((float)$stats['win_rate'], 2) : '0.00';
+$pointsFor = isset($stats['points_for']) ? (int)$stats['points_for'] : 0;
+$pointsAgainst = isset($stats['points_against']) ? (int)$stats['points_against'] : 0;
+$pointDifferential = isset($stats['point_differential']) ? (int)$stats['point_differential'] : ($pointsFor - $pointsAgainst);
+$averageMargin = isset($stats['average_margin']) ? number_format((float)$stats['average_margin'], 2) : '0.00';
+$pointDifferentialDisplay = ($pointDifferential > 0 ? '+' : '') . (string)$pointDifferential;
+$averagePointsFor = isset($stats['average_points_for']) ? number_format((float)$stats['average_points_for'], 2) : '0.00';
+$averagePointsAgainst = isset($stats['average_points_against']) ? number_format((float)$stats['average_points_against'], 2) : '0.00';
+$currentStreak = isset($stats['current_streak']) && is_array($stats['current_streak']) ? $stats['current_streak'] : ['type' => null, 'length' => 0];
+$currentStreakLabel = '—';
+if (!empty($currentStreak['type']) && !empty($currentStreak['length'])) {
+    $currentStreakLabel = strtoupper(substr((string)$currentStreak['type'], 0, 1)) . (int)$currentStreak['length'];
+}
+$bestWinStreak = isset($stats['best_win_streak']) ? (int)$stats['best_win_streak'] : 0;
+$shutoutWins = isset($stats['shutout_wins']) ? (int)$stats['shutout_wins'] : 0;
+$finalsAppearances = isset($stats['finals_appearances']) ? (int)$stats['finals_appearances'] : 0;
+$runnerUpFinishes = isset($stats['runner_up_finishes']) ? (int)$stats['runner_up_finishes'] : 0;
+$pendingMatches = isset($stats['pending_matches']) ? (int)$stats['pending_matches'] : 0;
+$activeTournaments = isset($stats['tournaments_active']) ? (int)$stats['tournaments_active'] : 0;
+$completedTournaments = isset($stats['tournaments_completed']) ? (int)$stats['tournaments_completed'] : 0;
+$recentForm = isset($stats['recent_form']) && is_array($stats['recent_form']) ? $stats['recent_form'] : [];
 
 $buildTournamentPayload = static function (array $tournament, array $players, bool $isRegistered): string {
     $playerIds = array_map(static fn($player) => (int)$player['user_id'], $players);
@@ -127,9 +150,40 @@ foreach ($recentMatchesRaw as $match) {
             </div>
             <div class="stat-card">
                 <span class="stat-card__label">Win Rate</span>
-                <span class="stat-card__value"><?= $winRate ?>%</span>
+                <span class="stat-card__value"><?= sanitize($winRate) ?>%</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__label">Current Streak</span>
+                <span class="stat-card__value"><?= sanitize($currentStreakLabel) ?></span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__label">Best Win Streak</span>
+                <span class="stat-card__value"><?= $bestWinStreak > 0 ? $bestWinStreak : '&mdash;' ?></span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__label">Point Differential</span>
+                <span class="stat-card__value"><?= sanitize($pointDifferentialDisplay) ?></span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card__label">Average Margin</span>
+                <span class="stat-card__value"><?= sanitize($averageMargin) ?></span>
             </div>
         </div>
+        <?php if ($recentForm): ?>
+            <?php $formSamples = array_slice(array_reverse($recentForm), 0, 8); ?>
+            <div class="player-recent-form">
+                <span class="player-recent-form__label">Recent Form</span>
+                <ul class="player-recent-form__list" aria-label="Recent results">
+                    <?php foreach ($formSamples as $result): ?>
+                        <?php $resultClass = $result === 'W' ? 'player-recent-form__item--win' : 'player-recent-form__item--loss'; ?>
+                        <li class="player-recent-form__item <?= $resultClass ?>" aria-label="<?= $result === 'W' ? 'Win' : 'Loss' ?>"><?= sanitize($result) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+        <?php if ($pendingMatches > 0): ?>
+            <p class="player-dashboard__notice">You have <?= sanitize((string)$pendingMatches) ?> match<?= $pendingMatches === 1 ? '' : 'es' ?> awaiting results.</p>
+        <?php endif; ?>
     </section>
 
     <div class="player-dashboard__grid">
@@ -144,13 +198,15 @@ foreach ($recentMatchesRaw as $match) {
                             $scoreReady = $match['score_for'] !== null && $match['score_against'] !== null;
                             $stage = $match['stage'] ? strtoupper($match['stage']) : null;
                             $round = $match['round'] ? 'Round ' . (int)$match['round'] : null;
+                            $stageLabelParts = array_values(array_filter([$stage, $round]));
+                            $stageLabel = $stageLabelParts ? implode(' • ', $stageLabelParts) : null;
                         ?>
                         <li class="recent-results__item">
                             <div class="recent-results__meta">
                                 <span class="recent-results__tournament"><?= sanitize($match['tournament']) ?></span>
                                 <span class="recent-results__opponent">vs. <?= sanitize($match['opponent']) ?></span>
-                                <?php if ($stage || $round): ?>
-                                    <span class="recent-results__stage muted"><?= sanitize(trim(($stage ?? '') . ' ' . ($round ?? ''))) ?></span>
+                                <?php if ($stageLabel): ?>
+                                    <span class="recent-results__stage muted"><?= sanitize($stageLabel) ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="recent-results__score <?= $resultClass ?>">
@@ -213,6 +269,47 @@ foreach ($recentMatchesRaw as $match) {
             <?php else: ?>
                 <p class="muted">You haven&rsquo;t joined any tournaments yet. Browse the upcoming list to get started.</p>
             <?php endif; ?>
+        </section>
+        <section class="card player-dashboard__card player-dashboard__insights">
+            <h2>Performance Highlights</h2>
+            <dl class="insight-grid">
+                <div class="insight-grid__item">
+                    <dt>Points For</dt>
+                    <dd><?= sanitize((string)$pointsFor) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Points Against</dt>
+                    <dd><?= sanitize((string)$pointsAgainst) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Average Points For</dt>
+                    <dd><?= sanitize($averagePointsFor) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Average Points Against</dt>
+                    <dd><?= sanitize($averagePointsAgainst) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Shutout Wins</dt>
+                    <dd><?= sanitize((string)$shutoutWins) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Finals Appearances</dt>
+                    <dd><?= sanitize((string)$finalsAppearances) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Runner-up Finishes</dt>
+                    <dd><?= sanitize((string)$runnerUpFinishes) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Active Tournaments</dt>
+                    <dd><?= sanitize((string)$activeTournaments) ?></dd>
+                </div>
+                <div class="insight-grid__item">
+                    <dt>Completed Events</dt>
+                    <dd><?= sanitize((string)$completedTournaments) ?></dd>
+                </div>
+            </dl>
         </section>
     </div>
 

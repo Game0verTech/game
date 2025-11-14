@@ -3109,19 +3109,9 @@ $(function () {
         openModal(modal);
     }
 
-    function determineInitialMonth(tournaments) {
+    function determineInitialMonth() {
         var today = new Date();
-        var candidate = null;
-        tournaments.forEach(function (tournament) {
-            if (!tournament || !tournament.scheduledDate) {
-                return;
-            }
-            if (!candidate || tournament.scheduledDate < candidate) {
-                candidate = tournament.scheduledDate;
-            }
-        });
-        var base = candidate || today;
-        return new Date(base.getFullYear(), base.getMonth(), 1);
+        return new Date(today.getFullYear(), today.getMonth(), 1);
     }
 
     function buildCalendar(container, state) {
@@ -3180,6 +3170,7 @@ $(function () {
             var today = new Date();
             if (cellDate.getFullYear() === today.getFullYear() && cellDate.getMonth() === today.getMonth() && cellDate.getDate() === today.getDate()) {
                 dayCell.addClass('is-today');
+                dayCell.attr('aria-current', 'date');
             }
             dayCell.append($('<span class="calendar-day__date"></span>').text(cellDate.getDate()));
             var eventsWrapper = $('<div class="calendar-events"></div>');
