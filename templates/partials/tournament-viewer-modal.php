@@ -39,7 +39,7 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                 <section class="tournament-viewer__section tournament-viewer__section--bracket">
                     <?php if ($canManageTournamentsInViewer): ?>
                         <div class="tournament-viewer__actions">
-                            <button type="button" class="btn secondary" data-viewer-open-actions>Manage Tournament</button>
+                            <button type="button" class="btn secondary" data-viewer-open-settings>Manage Tournament</button>
                         </div>
                     <?php endif; ?>
                     <div
@@ -59,37 +59,6 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
     </div>
 </div>
 <?php if ($canManageTournamentsInViewer): ?>
-    <div id="tournamentActionsModal" class="modal-overlay" hidden aria-hidden="true">
-        <div class="modal modal--sm" role="dialog" aria-modal="true" aria-labelledby="tournamentActionsTitle">
-            <button type="button" class="modal__close" data-close-modal aria-label="Close tournament management">&times;</button>
-            <h3 id="tournamentActionsTitle"><span class="js-action-title">Manage Tournament</span></h3>
-            <p class="muted js-action-schedule"></p>
-            <div class="tournament-actions">
-                <a href="#" class="btn link js-open-tournament" target="_blank" rel="noopener">Open in admin dashboard</a>
-                <button type="button" class="btn primary" data-open-settings>Edit tournament settings</button>
-            </div>
-            <div class="tournament-actions-list">
-                <form method="post" action="/api/tournaments.php">
-                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                    <input type="hidden" name="action" value="open">
-                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
-                    <button type="submit" class="btn subtle">Open registration</button>
-                </form>
-                <form method="post" action="/api/tournaments.php">
-                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                    <input type="hidden" name="action" value="start">
-                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
-                    <button type="submit" class="btn subtle">Start tournament</button>
-                </form>
-                <form method="post" action="/api/tournaments.php">
-                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                    <input type="hidden" name="action" value="complete">
-                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
-                    <button type="submit" class="btn subtle">Complete tournament</button>
-                </form>
-            </div>
-        </div>
-    </div>
     <div
         id="tournamentSettingsModal"
         class="modal-overlay"
@@ -100,6 +69,35 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
         <div class="modal modal--lg" role="dialog" aria-modal="true" aria-labelledby="tournamentSettingsTitle">
             <button type="button" class="modal__close" data-close-modal aria-label="Close tournament settings">&times;</button>
             <h3 id="tournamentSettingsTitle">Edit Tournament</h3>
+            <div class="tournament-settings__meta">
+                <div>
+                    <span class="status-pill js-settings-status" hidden></span>
+                    <p class="muted small js-settings-schedule"></p>
+                </div>
+                <div class="tournament-settings__toolbar">
+                    <a href="#" class="btn link js-settings-open-admin" target="_blank" rel="noopener">Open in admin dashboard</a>
+                    <div class="tournament-settings__actions">
+                        <form method="post" action="/api/tournaments.php" class="tournament-settings__action-form">
+                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                            <input type="hidden" name="action" value="open">
+                            <input type="hidden" name="tournament_id" value="" class="js-settings-tournament-id">
+                            <button type="submit" class="btn subtle">Open registration</button>
+                        </form>
+                        <form method="post" action="/api/tournaments.php" class="tournament-settings__action-form">
+                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                            <input type="hidden" name="action" value="start">
+                            <input type="hidden" name="tournament_id" value="" class="js-settings-tournament-id">
+                            <button type="submit" class="btn subtle">Start tournament</button>
+                        </form>
+                        <form method="post" action="/api/tournaments.php" class="tournament-settings__action-form">
+                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                            <input type="hidden" name="action" value="complete">
+                            <input type="hidden" name="tournament_id" value="" class="js-settings-tournament-id">
+                            <button type="submit" class="btn subtle">Complete tournament</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
             <p class="muted">Update tournament details and manage the registered roster.</p>
             <form method="post" action="/api/tournaments.php" class="modal-form">
                 <input type="hidden" name="_token" value="<?= csrf_token() ?>">
@@ -144,6 +142,37 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                     <button type="button" class="btn link" data-close-modal>Cancel</button>
                 </div>
             </form>
+        </div>
+    </div>
+    <div id="tournamentActionsModal" class="modal-overlay" hidden aria-hidden="true">
+        <div class="modal modal--sm" role="dialog" aria-modal="true" aria-labelledby="tournamentActionsTitle">
+            <button type="button" class="modal__close" data-close-modal aria-label="Close tournament management">&times;</button>
+            <h3 id="tournamentActionsTitle"><span class="js-action-title">Manage Tournament</span></h3>
+            <p class="muted js-action-schedule"></p>
+            <div class="tournament-actions">
+                <a href="#" class="btn link js-open-tournament" target="_blank" rel="noopener">Open in admin dashboard</a>
+                <button type="button" class="btn primary" data-open-settings>Edit tournament settings</button>
+            </div>
+            <div class="tournament-actions-list">
+                <form method="post" action="/api/tournaments.php">
+                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="open">
+                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
+                    <button type="submit" class="btn subtle">Open registration</button>
+                </form>
+                <form method="post" action="/api/tournaments.php">
+                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="start">
+                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
+                    <button type="submit" class="btn subtle">Start tournament</button>
+                </form>
+                <form method="post" action="/api/tournaments.php">
+                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="complete">
+                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
+                    <button type="submit" class="btn subtle">Complete tournament</button>
+                </form>
+            </div>
         </div>
     </div>
 <?php endif; ?>

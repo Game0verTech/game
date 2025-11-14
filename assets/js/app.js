@@ -3772,7 +3772,23 @@ $(function () {
         });
     }
 
-    function openSettingsModal(modal, tournamentId) {
+    function applyStatusPill(element, status) {
+        if (!element || !element.length) {
+            return;
+        }
+        var normalized = (status || '').toLowerCase();
+        element.removeClass('status-draft status-open status-live status-completed');
+        if (!normalized) {
+            element.attr('hidden', 'hidden');
+            element.text('');
+            return;
+        }
+        element.removeAttr('hidden');
+        element.addClass('status-' + normalized);
+        element.text(normalized.charAt(0).toUpperCase() + normalized.slice(1));
+    }
+
+    function openSettingsModal(modal, tournamentId, options) {
         if (!modal || !modal.length) {
             return;
         }
@@ -3780,6 +3796,7 @@ $(function () {
         if (!tournament) {
             return;
         }
+        var config = $.extend({ expandPlayers: false }, options);
         ensurePlayerChecklist(modal);
         var form = modal.find('form');
         if (form.length && typeof form[0].reset === 'function') {
@@ -3793,12 +3810,29 @@ $(function () {
         form.find('[name="scheduled_time"]').val(toTimeInputValue(tournament.scheduledDate));
         form.find('[name="location"]').val(tournament.location || defaultTournamentLocation);
 
+        var metaSchedule = modal.find('.js-settings-schedule');
+        if (metaSchedule.length) {
+            metaSchedule.text(formatTournamentSchedule(tournament));
+        }
+        applyStatusPill(modal.find('.js-settings-status'), tournament.status);
+
+        var adminLink = modal.find('.js-settings-open-admin');
+        if (adminLink.length) {
+            adminLink.attr('href', '/?page=admin&t=view&id=' + tournament.id);
+        }
+        modal.find('.js-settings-tournament-id').val(tournament.id);
+
         var list = modal.find('[data-player-list]');
         var toggleButton = modal.find('[data-toggle-player-list]');
-        if (list.attr('hidden') === undefined) {
-            list.attr('hidden', 'hidden');
+        if (config.expandPlayers) {
+            list.removeAttr('hidden');
+            toggleButton.attr('aria-expanded', 'true').text('Hide Player List');
+        } else {
+            if (list.attr('hidden') === undefined) {
+                list.attr('hidden', 'hidden');
+            }
+            toggleButton.attr('aria-expanded', 'false').text('Add Players');
         }
-        toggleButton.attr('aria-expanded', 'false').text('Add Players');
 
         list.find('input[type="checkbox"]').each(function () {
             var checkbox = $(this);
@@ -3972,6 +4006,24 @@ $(function () {
         }
         closeModal(viewerModal, true);
         openActionsModal(tournamentId);
+    });
+
+    $(document).on('click', '[data-viewer-open-settings]', function (event) {
+        event.preventDefault();
+        var viewerModal = $('#tournamentViewerModal');
+        if (!viewerModal.length) {
+            return;
+        }
+        var tournamentId = parseInt(viewerModal.data('tournamentId'), 10);
+        if (!tournamentId) {
+            return;
+        }
+        var modal = $('#tournamentSettingsModal');
+        if (!modal.length) {
+            return;
+        }
+        closeModal(viewerModal, true);
+        openSettingsModal(modal, tournamentId, { expandPlayers: true });
     });
 
     $(document).on('click', '[data-view-bracket]', function (event) {

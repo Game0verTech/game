@@ -1360,6 +1360,42 @@ body.modal-open {
     width: 100%;
 }
 
+.tournament-settings__meta {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.tournament-settings__meta .status-pill {
+    margin-bottom: 6px;
+}
+
+.tournament-settings__toolbar {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.tournament-settings__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.tournament-settings__action-form {
+    margin: 0;
+    display: flex;
+}
+
+.tournament-settings__action-form .btn {
+    white-space: nowrap;
+}
+
 .player-management {
     display: grid;
     gap: 16px;
@@ -1379,6 +1415,14 @@ body.modal-open {
         width: 100vw;
         height: 100vh;
         border-radius: 0;
+    }
+
+    .tournament-settings__toolbar {
+        align-items: stretch;
+    }
+
+    .tournament-settings__actions {
+        justify-content: stretch;
     }
 }
 
