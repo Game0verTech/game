@@ -132,10 +132,7 @@ function stats_build_user_match_filter(int $userId): array
     $clauses = [
         'tm.player1_user_id = :user_id',
         'tm.player2_user_id = :user_id',
-        'JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player1.id")) = :user_id_str',
-        'JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player2.id")) = :user_id_str',
-        'JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player1.user_id")) = :user_id_str',
-        'JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player2.user_id")) = :user_id_str',
+        'tm.winner_user_id = :user_id',
     ];
 
     $bindings = [
@@ -144,25 +141,51 @@ function stats_build_user_match_filter(int $userId): array
             'value' => $userId,
             'type' => PDO::PARAM_INT,
         ],
-        [
-            'name' => ':user_id_str',
-            'value' => (string)$userId,
-            'type' => PDO::PARAM_STR,
-        ],
     ];
+
+    $userIdStr = (string)$userId;
+
+    $idRegexes = [
+        ':meta_player1_id' => '\\"player1\\"[^}]*\\"id\\":' . $userIdStr . '([^0-9])',
+        ':meta_player2_id' => '\\"player2\\"[^}]*\\"id\\":' . $userIdStr . '([^0-9])',
+        ':meta_player1_user_id' => '\\"player1\\"[^}]*\\"user_id\\":' . $userIdStr . '([^0-9])',
+        ':meta_player2_user_id' => '\\"player2\\"[^}]*\\"user_id\\":' . $userIdStr . '([^0-9])',
+        ':meta_player1_player_id' => '\\"player1\\"[^}]*\\"player_id\\":' . $userIdStr . '([^0-9])',
+        ':meta_player2_player_id' => '\\"player2\\"[^}]*\\"player_id\\":' . $userIdStr . '([^0-9])',
+        ':meta_winner_id' => '\\"winner\\"[^}]*\\"id\\":' . $userIdStr . '([^0-9])',
+        ':meta_winner_user_id' => '\\"winner\\"[^}]*\\"user_id\\":' . $userIdStr . '([^0-9])',
+        ':meta_winner_player_id' => '\\"winner\\"[^}]*\\"player_id\\":' . $userIdStr . '([^0-9])',
+    ];
+
+    foreach ($idRegexes as $placeholder => $pattern) {
+        $clauses[] = '(tm.meta IS NOT NULL AND CAST(tm.meta AS CHAR) REGEXP ' . $placeholder . ')';
+        $bindings[] = [
+            'name' => $placeholder,
+            'value' => $pattern,
+            'type' => PDO::PARAM_STR,
+        ];
+    }
 
     $username = stats_resolve_username($userId);
     if ($username !== null) {
         $usernameLower = strtolower($username);
-        $clauses[] = 'LOWER(JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player1.username"))) = :username_lower';
-        $clauses[] = 'LOWER(JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player2.username"))) = :username_lower';
-        $clauses[] = 'LOWER(JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player1.name"))) = :username_lower';
-        $clauses[] = 'LOWER(JSON_UNQUOTE(JSON_EXTRACT(tm.meta, "$.player2.name"))) = :username_lower';
-        $bindings[] = [
-            'name' => ':username_lower',
-            'value' => $usernameLower,
-            'type' => PDO::PARAM_STR,
+        $escapedUsername = addcslashes($usernameLower, '\\"');
+        $nameRegexes = [
+            ':meta_player1_username' => '\\"player1\\"[^}]*\\"username\\":\\"' . $escapedUsername . '\\"',
+            ':meta_player2_username' => '\\"player2\\"[^}]*\\"username\\":\\"' . $escapedUsername . '\\"',
+            ':meta_player1_name' => '\\"player1\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
+            ':meta_player2_name' => '\\"player2\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
+            ':meta_winner_name' => '\\"winner\\"[^}]*\\"name\\":\\"' . $escapedUsername . '\\"',
         ];
+
+        foreach ($nameRegexes as $placeholder => $pattern) {
+            $clauses[] = '(tm.meta IS NOT NULL AND LOWER(CAST(tm.meta AS CHAR)) REGEXP ' . $placeholder . ')';
+            $bindings[] = [
+                'name' => $placeholder,
+                'value' => strtolower($pattern),
+                'type' => PDO::PARAM_STR,
+            ];
+        }
     }
 
     return [
