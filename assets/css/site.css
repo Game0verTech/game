@@ -417,6 +417,10 @@ main.container {
     color: #ff7878;
 }
 
+.recent-results__score.is-pending .recent-results__label {
+    color: #f3c969;
+}
+
 .recent-results__values {
     font-size: 1.1rem;
     font-weight: 600;
