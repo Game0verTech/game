@@ -43,6 +43,510 @@ function ensure_user_ban_column(): void
     }
 }
 
+function ensure_user_profile_schema(): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+
+    $pdo = db();
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'user_profiles'");
+    $tableExists = $tableCheck->fetchColumn() !== false;
+
+    if (!$tableExists) {
+        $pdo->exec(<<<SQL
+CREATE TABLE user_profiles (
+    user_id INT PRIMARY KEY,
+    display_name VARCHAR(120) DEFAULT NULL,
+    public_about TEXT DEFAULT NULL,
+    gamer_tags JSON DEFAULT NULL,
+    social_links JSON DEFAULT NULL,
+    icon_path VARCHAR(255) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_user_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL
+        );
+        return;
+    }
+
+    $columns = [
+        'display_name' => "ALTER TABLE user_profiles ADD COLUMN display_name VARCHAR(120) DEFAULT NULL AFTER user_id",
+        'public_about' => "ALTER TABLE user_profiles ADD COLUMN public_about TEXT DEFAULT NULL AFTER display_name",
+        'gamer_tags' => "ALTER TABLE user_profiles ADD COLUMN gamer_tags JSON DEFAULT NULL AFTER public_about",
+        'social_links' => "ALTER TABLE user_profiles ADD COLUMN social_links JSON DEFAULT NULL AFTER gamer_tags",
+        'icon_path' => "ALTER TABLE user_profiles ADD COLUMN icon_path VARCHAR(255) DEFAULT NULL AFTER social_links",
+        'created_at' => "ALTER TABLE user_profiles ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER icon_path",
+        'updated_at' => "ALTER TABLE user_profiles ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at",
+    ];
+
+    foreach ($columns as $column => $sql) {
+        $columnCheck = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_profiles' AND COLUMN_NAME = :column");
+        $columnCheck->execute([':column' => $column]);
+        if ($columnCheck->fetchColumn()) {
+            continue;
+        }
+        $pdo->exec($sql);
+    }
+
+    $primaryCheck = $pdo->query("SHOW INDEX FROM user_profiles WHERE Key_name = 'PRIMARY'");
+    if ($primaryCheck->fetchColumn() === false) {
+        $pdo->exec('ALTER TABLE user_profiles ADD PRIMARY KEY (user_id)');
+    }
+}
+
+function profile_gamer_tag_fields(): array
+{
+    return [
+        'xbox' => ['label' => 'Xbox Gamertag'],
+        'psn' => ['label' => 'PlayStation Network'],
+        'steam' => ['label' => 'Steam'],
+        'switch' => ['label' => 'Nintendo Switch'],
+    ];
+}
+
+function profile_social_fields(): array
+{
+    return [
+        'twitch' => ['label' => 'Twitch', 'url_format' => 'https://www.twitch.tv/%s', 'strip_at' => true],
+        'youtube' => ['label' => 'YouTube', 'url_format' => 'https://www.youtube.com/@%s', 'strip_at' => true],
+        'twitter' => ['label' => 'X (Twitter)', 'url_format' => 'https://twitter.com/%s', 'strip_at' => true],
+        'instagram' => ['label' => 'Instagram', 'url_format' => 'https://www.instagram.com/%s', 'strip_at' => true],
+        'facebook' => ['label' => 'Facebook', 'url_format' => 'https://www.facebook.com/%s', 'strip_at' => true],
+        'discord' => ['label' => 'Discord', 'url_format' => null, 'strip_at' => true],
+    ];
+}
+
+function ensure_user_profile_record(int $userId): array
+{
+    ensure_user_profile_schema();
+
+    $pdo = db();
+    $select = $pdo->prepare('SELECT * FROM user_profiles WHERE user_id = :id');
+    $select->execute([':id' => $userId]);
+    $profile = $select->fetch();
+    if ($profile) {
+        return $profile;
+    }
+
+    $insert = $pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:id)');
+    $insert->execute([':id' => $userId]);
+
+    $select->execute([':id' => $userId]);
+    return $select->fetch() ?: ['user_id' => $userId];
+}
+
+function decode_profile_json($value): array
+{
+    if (is_array($value)) {
+        return $value;
+    }
+    if (!is_string($value)) {
+        return [];
+    }
+    $trimmed = trim($value);
+    if ($trimmed === '') {
+        return [];
+    }
+    $decoded = json_decode($trimmed, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function default_user_icon_url(): string
+{
+    return '/assets/images/default-avatar.svg';
+}
+
+function resolve_user_icon_url(?string $path): string
+{
+    if ($path === null) {
+        return default_user_icon_url();
+    }
+
+    $trimmed = trim($path);
+    if ($trimmed === '') {
+        return default_user_icon_url();
+    }
+
+    $normalized = ltrim($trimmed, '/');
+    if ($normalized === '') {
+        return default_user_icon_url();
+    }
+
+    $fullPath = __DIR__ . '/../' . $normalized;
+    if (!file_exists($fullPath)) {
+        return default_user_icon_url();
+    }
+
+    return '/' . $normalized;
+}
+
+function user_icon_url(?array $user = null): string
+{
+    $user = $user ?? current_user();
+    if (!$user) {
+        return default_user_icon_url();
+    }
+
+    $path = $user['icon_path'] ?? null;
+    if (!$path) {
+        return default_user_icon_url();
+    }
+
+    $trimmed = trim((string)$path);
+    if ($trimmed === '') {
+        return default_user_icon_url();
+    }
+
+    return $trimmed[0] === '/' ? $trimmed : '/' . ltrim($trimmed, '/');
+}
+
+function user_social_profile_url(string $platform, string $handle): ?string
+{
+    $fields = profile_social_fields();
+    if (!isset($fields[$platform])) {
+        return null;
+    }
+    $format = $fields[$platform]['url_format'] ?? null;
+    if (!$format) {
+        return null;
+    }
+
+    $normalized = trim($handle);
+    if ($normalized === '') {
+        return null;
+    }
+    $normalized = ltrim($normalized, '@');
+    $normalized = preg_replace('/\s+/u', '', $normalized) ?? '';
+    if ($normalized === '') {
+        return null;
+    }
+
+    return sprintf($format, rawurlencode($normalized));
+}
+
+function get_user_profile(int $userId): array
+{
+    $profile = ensure_user_profile_record($userId);
+
+    $displayName = $profile['display_name'] ?? null;
+    if ($displayName !== null) {
+        $normalizedDisplay = normalize_single_line_text((string)$displayName, 120);
+        $profile['display_name'] = $normalizedDisplay === '' ? null : $normalizedDisplay;
+    }
+
+    $gamerTagsRaw = decode_profile_json($profile['gamer_tags'] ?? null);
+    $allowedGamer = profile_gamer_tag_fields();
+    $gamerTags = [];
+    foreach ($allowedGamer as $key => $meta) {
+        if (!isset($gamerTagsRaw[$key])) {
+            continue;
+        }
+        $value = normalize_single_line_text((string)$gamerTagsRaw[$key], 80);
+        if ($value === '') {
+            continue;
+        }
+        $gamerTags[$key] = $value;
+    }
+
+    $socialRaw = decode_profile_json($profile['social_links'] ?? null);
+    $allowedSocial = profile_social_fields();
+    $socialLinks = [];
+    foreach ($allowedSocial as $key => $meta) {
+        if (!isset($socialRaw[$key])) {
+            continue;
+        }
+        $value = normalize_single_line_text((string)$socialRaw[$key], 80);
+        if ($value === '') {
+            continue;
+        }
+        if (!empty($meta['strip_at'])) {
+            $value = ltrim($value, '@');
+        }
+        $socialLinks[$key] = $value;
+    }
+
+    $profile['gamer_tags'] = $gamerTags;
+    $profile['social_links'] = $socialLinks;
+    $profile['icon_url'] = resolve_user_icon_url($profile['icon_path'] ?? null);
+
+    return $profile;
+}
+
+function user_icon_directory(): string
+{
+    $path = __DIR__ . '/../assets/user-icons';
+    if (!is_dir($path)) {
+        if (!mkdir($path, 0755, true) && !is_dir($path)) {
+            throw new RuntimeException('Failed to create user icon directory.');
+        }
+    }
+    return realpath($path) ?: $path;
+}
+
+function update_user_account_info(int $userId, string $email, ?string $displayName, string $currentPassword): void
+{
+    $user = get_user_by_id($userId);
+    if (!$user) {
+        throw new RuntimeException('User not found.');
+    }
+
+    if (!password_verify($currentPassword, $user['password_hash'])) {
+        throw new InvalidArgumentException('Current password is incorrect.');
+    }
+
+    $normalizedEmail = strtolower(trim($email));
+    if (!filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL)) {
+        throw new InvalidArgumentException('Enter a valid email address.');
+    }
+
+    $emailCheck = db()->prepare('SELECT id FROM users WHERE email = :email AND id <> :id LIMIT 1');
+    $emailCheck->execute([':email' => $normalizedEmail, ':id' => $userId]);
+    if ($emailCheck->fetch()) {
+        throw new InvalidArgumentException('Email address is already registered.');
+    }
+
+    $display = normalize_single_line_text($displayName, 120);
+    if ($display !== '' && contains_profanity($display)) {
+        throw new InvalidArgumentException('Display name contains inappropriate language.');
+    }
+
+    $pdo = db();
+    $pdo->prepare('UPDATE users SET email = :email, updated_at = NOW() WHERE id = :id')
+        ->execute([':email' => $normalizedEmail, ':id' => $userId]);
+
+    ensure_user_profile_record($userId);
+    $pdo->prepare('UPDATE user_profiles SET display_name = :display_name, updated_at = NOW() WHERE user_id = :id')
+        ->execute([':display_name' => $display === '' ? null : $display, ':id' => $userId]);
+}
+
+function update_user_public_profile(int $userId, string $about, array $gamerTags, array $socialHandles): array
+{
+    ensure_user_profile_record($userId);
+
+    $aboutNormalized = normalize_multiline_text($about, 500);
+    if ($aboutNormalized !== '' && contains_profanity($aboutNormalized)) {
+        throw new InvalidArgumentException('About me text contains inappropriate language.');
+    }
+
+    $gamerNormalized = [];
+    foreach (profile_gamer_tag_fields() as $key => $meta) {
+        $value = $gamerTags[$key] ?? '';
+        $clean = normalize_single_line_text($value, 80);
+        if ($clean === '') {
+            continue;
+        }
+        if (contains_profanity($clean)) {
+            throw new InvalidArgumentException('Gamer tag contains inappropriate language.');
+        }
+        $gamerNormalized[$key] = $clean;
+    }
+
+    $socialNormalized = [];
+    foreach (profile_social_fields() as $key => $meta) {
+        $value = $socialHandles[$key] ?? '';
+        $clean = normalize_single_line_text($value, 80);
+        if ($clean === '') {
+            continue;
+        }
+        if (!empty($meta['strip_at'])) {
+            $clean = ltrim($clean, '@');
+        }
+        $clean = str_replace(' ', '', $clean);
+        if (contains_profanity($clean)) {
+            throw new InvalidArgumentException('Social handle contains inappropriate language.');
+        }
+        $socialNormalized[$key] = $clean;
+    }
+
+    $pdo = db();
+    $pdo->prepare('UPDATE user_profiles SET public_about = :about, gamer_tags = :gamer, social_links = :social, updated_at = NOW() WHERE user_id = :id')
+        ->execute([
+            ':about' => $aboutNormalized === '' ? null : $aboutNormalized,
+            ':gamer' => $gamerNormalized ? json_encode($gamerNormalized, JSON_UNESCAPED_UNICODE) : null,
+            ':social' => $socialNormalized ? json_encode($socialNormalized, JSON_UNESCAPED_UNICODE) : null,
+            ':id' => $userId,
+        ]);
+
+    return [
+        'public_about' => $aboutNormalized,
+        'gamer_tags' => $gamerNormalized,
+        'social_links' => $socialNormalized,
+    ];
+}
+
+function update_user_icon(int $userId, array $file): string
+{
+    ensure_user_profile_record($userId);
+
+    if (!isset($file['error']) || (int)$file['error'] !== UPLOAD_ERR_OK) {
+        throw new InvalidArgumentException('Upload failed. Please try again.');
+    }
+
+    if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        throw new InvalidArgumentException('Invalid upload attempt.');
+    }
+
+    $info = @getimagesize($file['tmp_name']);
+    if ($info === false) {
+        throw new InvalidArgumentException('Icon must be a valid image file.');
+    }
+
+    $type = $info[2] ?? null;
+    $allowed = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+    if (!in_array($type, $allowed, true)) {
+        throw new InvalidArgumentException('Unsupported image format. Use PNG, JPG, GIF, or WebP.');
+    }
+
+    $sizeLimit = 2 * 1024 * 1024;
+    if (!empty($file['size']) && (int)$file['size'] > $sizeLimit) {
+        throw new InvalidArgumentException('Icon must be 2MB or smaller.');
+    }
+
+    switch ($type) {
+        case IMAGETYPE_JPEG:
+            $source = imagecreatefromjpeg($file['tmp_name']);
+            break;
+        case IMAGETYPE_PNG:
+            $source = imagecreatefrompng($file['tmp_name']);
+            break;
+        case IMAGETYPE_GIF:
+            $source = imagecreatefromgif($file['tmp_name']);
+            break;
+        case IMAGETYPE_WEBP:
+            if (!function_exists('imagecreatefromwebp')) {
+                throw new InvalidArgumentException('WebP images are not supported on this server.');
+            }
+            $source = imagecreatefromwebp($file['tmp_name']);
+            break;
+        default:
+            $source = false;
+    }
+
+    if (!$source) {
+        throw new RuntimeException('Failed to read uploaded image.');
+    }
+
+    $width = imagesx($source);
+    $height = imagesy($source);
+    $cropSize = min($width, $height);
+    $srcX = (int)max(0, ($width - $cropSize) / 2);
+    $srcY = (int)max(0, ($height - $cropSize) / 2);
+
+    $targetSize = 256;
+    $target = imagecreatetruecolor($targetSize, $targetSize);
+    imagealphablending($target, false);
+    imagesavealpha($target, true);
+    imagecopyresampled($target, $source, 0, 0, $srcX, $srcY, $targetSize, $targetSize, $cropSize, $cropSize);
+
+    $directory = user_icon_directory();
+    $filename = 'user_' . $userId . '_' . bin2hex(random_bytes(6)) . '.png';
+    $fullPath = $directory . DIRECTORY_SEPARATOR . $filename;
+
+    if (!imagepng($target, $fullPath)) {
+        imagedestroy($source);
+        imagedestroy($target);
+        throw new RuntimeException('Failed to save resized icon.');
+    }
+
+    imagedestroy($source);
+    imagedestroy($target);
+
+    $relativePath = 'assets/user-icons/' . $filename;
+    $publicPath = '/' . $relativePath;
+
+    $profile = get_user_profile($userId);
+    $previous = $profile['icon_path'] ?? null;
+    if ($previous) {
+        $previousPath = __DIR__ . '/../' . ltrim($previous, '/');
+        if (is_file($previousPath)) {
+            @unlink($previousPath);
+        }
+    }
+
+    db()->prepare('UPDATE user_profiles SET icon_path = :path, updated_at = NOW() WHERE user_id = :id')
+        ->execute([':path' => $relativePath, ':id' => $userId]);
+
+    return $publicPath;
+}
+
+function remove_user_icon(int $userId): void
+{
+    ensure_user_profile_record($userId);
+    $profile = get_user_profile($userId);
+    $existing = $profile['icon_path'] ?? null;
+    if ($existing) {
+        $path = __DIR__ . '/../' . ltrim($existing, '/');
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+
+    db()->prepare('UPDATE user_profiles SET icon_path = NULL, updated_at = NOW() WHERE user_id = :id')
+        ->execute([':id' => $userId]);
+}
+
+function get_public_user_profile(string $username): ?array
+{
+    ensure_user_profile_schema();
+
+    $stmt = db()->prepare(
+        'SELECT u.id, u.username, u.created_at, up.display_name, up.public_about, up.gamer_tags, up.social_links, up.icon_path
+         FROM users u
+         LEFT JOIN user_profiles up ON up.user_id = u.id
+         WHERE u.username = :username AND u.is_active = 1 AND u.is_banned = 0'
+    );
+    $stmt->execute([':username' => $username]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+
+    $gamerTagsRaw = decode_profile_json($row['gamer_tags'] ?? null);
+    $gamerTags = [];
+    foreach (profile_gamer_tag_fields() as $key => $meta) {
+        if (!isset($gamerTagsRaw[$key])) {
+            continue;
+        }
+        $value = normalize_single_line_text((string)$gamerTagsRaw[$key], 80);
+        if ($value === '') {
+            continue;
+        }
+        $gamerTags[$key] = $value;
+    }
+
+    $socialRaw = decode_profile_json($row['social_links'] ?? null);
+    $socialLinks = [];
+    foreach (profile_social_fields() as $key => $meta) {
+        if (!isset($socialRaw[$key])) {
+            continue;
+        }
+        $value = normalize_single_line_text((string)$socialRaw[$key], 80);
+        if ($value === '') {
+            continue;
+        }
+        if (!empty($meta['strip_at'])) {
+            $value = ltrim($value, '@');
+        }
+        $socialLinks[$key] = $value;
+    }
+
+    return [
+        'id' => (int)$row['id'],
+        'username' => $row['username'],
+        'display_name' => $row['display_name'] ?? null,
+        'public_about' => $row['public_about'] ?? null,
+        'gamer_tags' => $gamerTags,
+        'social_links' => $socialLinks,
+        'icon_url' => resolve_user_icon_url($row['icon_path'] ?? null),
+        'created_at' => $row['created_at'] ?? null,
+    ];
+}
+
+
 function ensure_user_email_verification_table(): void
 {
     static $ensured = false;
@@ -104,6 +608,7 @@ function issue_email_verification_token(int $userId): array
 function create_user(string $username, string $email, string $password, string $role = 'player', bool $isActive = false): array
 {
     ensure_user_email_verification_table();
+    ensure_user_profile_schema();
 
     $hash = password_hash($password, PASSWORD_DEFAULT);
 
@@ -120,6 +625,7 @@ function create_user(string $username, string $email, string $password, string $
 
     $id = (int)db()->lastInsertId();
     $user = get_user_by_id($id);
+    ensure_user_profile_record($id);
 
     if (!$isActive) {
         $verification = issue_email_verification_token($id);
@@ -330,6 +836,9 @@ function regenerate_email_token(int $userId): array
 
 function store_session_user(array $user): void
 {
+    $profile = get_user_profile((int)$user['id']);
+    $iconUrl = $profile['icon_url'] ?? default_user_icon_url();
+
     $_SESSION['user'] = [
         'id' => $user['id'],
         'username' => $user['username'],
@@ -337,6 +846,8 @@ function store_session_user(array $user): void
         'role' => $user['role'],
         'is_banned' => (int)$user['is_banned'],
         'is_active' => (int)$user['is_active'],
+        'display_name' => $profile['display_name'] ?? null,
+        'icon_path' => $iconUrl,
     ];
 }
 

@@ -49,6 +49,101 @@ function sanitize(string $value): string
     return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+function user_profile_url(string $username): string
+{
+    $username = trim($username);
+    if ($username === '') {
+        return '#';
+    }
+
+    return '/?page=profile&user=' . rawurlencode($username);
+}
+
+function user_profile_link(?string $username, ?string $label = null): string
+{
+    if ($username === null) {
+        $labelText = $label ?? '';
+        return sanitize($labelText);
+    }
+
+    $trimmed = trim($username);
+    if ($trimmed === '') {
+        $labelText = $label ?? '';
+        return sanitize($labelText);
+    }
+
+    $labelText = $label ?? $trimmed;
+    $url = user_profile_url($trimmed);
+
+    return '<a class="user-link" href="' . sanitize($url) . '">' . sanitize($labelText) . '</a>';
+}
+
+function normalize_single_line_text(?string $value, int $maxLength = 150): string
+{
+    $normalized = trim((string)$value);
+    $normalized = strip_tags($normalized);
+    $normalized = preg_replace('/[\r\n\t]+/u', ' ', $normalized) ?? '';
+    $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? '';
+
+    if ($maxLength > 0 && mb_strlen($normalized) > $maxLength) {
+        $normalized = mb_substr($normalized, 0, $maxLength);
+    }
+
+    return $normalized;
+}
+
+function normalize_multiline_text(?string $value, int $maxLength = 500): string
+{
+    $normalized = trim((string)$value);
+    $normalized = strip_tags($normalized);
+    $normalized = preg_replace("/\r\n?/u", "\n", $normalized) ?? '';
+    $normalized = preg_replace('/\s*\n\s*/u', "\n", $normalized) ?? '';
+
+    if ($maxLength > 0 && mb_strlen($normalized) > $maxLength) {
+        $normalized = mb_substr($normalized, 0, $maxLength);
+    }
+
+    return $normalized;
+}
+
+function profanity_list(): array
+{
+    return [
+        'fuck',
+        'shit',
+        'bitch',
+        'cunt',
+        'asshole',
+        'bastard',
+        'faggot',
+        'nigger',
+        'slut',
+        'whore',
+        'dick',
+        'cock',
+        'pussy',
+        'motherfucker',
+        'twat',
+        'fucker',
+    ];
+}
+
+function contains_profanity(string $text): bool
+{
+    $normalized = strtolower($text);
+    foreach (profanity_list() as $word) {
+        if ($word === '') {
+            continue;
+        }
+        $pattern = '/\b' . preg_quote($word, '/') . '\b/u';
+        if (preg_match($pattern, $normalized)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function current_user(): ?array
 {
     return $_SESSION['user'] ?? null;

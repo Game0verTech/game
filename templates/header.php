@@ -46,11 +46,30 @@ $navCurrentPage = $_GET['page'] ?? ($user ? 'dashboard' : 'home');
                 <?php if (user_has_role('admin')): ?>
                     <a href="/?page=store"<?= $navCurrentPage === 'store' ? ' aria-current="page"' : '' ?>>Store</a>
                 <?php endif; ?>
-                <form method="post" action="/api/auth.php" class="logout-form">
-                    <input type="hidden" name="action" value="logout">
-                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
-                    <button type="submit">Logout (<?= sanitize($user['username']) ?>)</button>
-                </form>
+                <?php
+                    $menuLabel = $user['display_name'] ?? $user['username'];
+                    $menuIcon = user_icon_url($user);
+                ?>
+                <div class="user-menu js-user-menu">
+                    <button class="user-menu__trigger" type="button" aria-haspopup="true" aria-expanded="false">
+                        <span class="user-menu__avatar" aria-hidden="true">
+                            <img src="<?= sanitize($menuIcon) ?>" alt="" loading="lazy">
+                        </span>
+                        <span class="user-menu__name"><?= sanitize($menuLabel) ?></span>
+                        <span class="user-menu__caret" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="user-menu__dropdown" role="menu">
+                        <a class="user-menu__item" href="/?page=my-profile" role="menuitem">My Profile</a>
+                        <a class="user-menu__item" href="/?page=account" role="menuitem">Edit Account Information</a>
+                        <a class="user-menu__item" href="/?page=change-password" role="menuitem">Change Password</a>
+                        <a class="user-menu__item" href="/?page=change-icon" role="menuitem">Change User Icon</a>
+                        <form method="post" action="/api/auth.php" class="user-menu__logout" role="none">
+                            <input type="hidden" name="action" value="logout">
+                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                            <button type="submit" class="user-menu__item" role="menuitem">Logout</button>
+                        </form>
+                    </div>
+                </div>
             <?php else: ?>
                 <a href="/?page=home"<?= $navCurrentPage === 'home' ? ' aria-current="page"' : '' ?>>Dashboard</a>
                 <a href="/?page=login"<?= $navCurrentPage === 'login' ? ' aria-current="page"' : '' ?>>Login</a>

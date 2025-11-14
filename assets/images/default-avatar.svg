@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title>Default user avatar</title>
+  <desc>Stylized outline of a person on a gradient circle background.</desc>
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a6df4" />
+      <stop offset="100%" stop-color="#051937" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="64" fill="url(#bgGradient)" />
+  <path
+    d="M64 68c13.255 0 24-10.745 24-24S77.255 20 64 20 40 30.745 40 44s10.745 24 24 24zm0 12c-20.436 0-37 13.785-37 30.8 0 3.54 2.87 6.4 6.41 6.4h61.18c3.54 0 6.41-2.86 6.41-6.4C101 93.785 84.436 80 64 80z"
+    fill="#f4f7ff" fill-opacity="0.9"
+  />
+</svg>

@@ -1,4 +1,48 @@
 $(function () {
+    function closeAllUserMenus() {
+        $('.js-user-menu').removeClass('is-open').find('.user-menu__trigger').attr('aria-expanded', 'false');
+    }
+
+    function initUserMenu() {
+        var menus = $('.js-user-menu');
+        if (!menus.length) {
+            return;
+        }
+
+        menus.each(function () {
+            var menu = $(this);
+            var trigger = menu.find('.user-menu__trigger');
+            if (!trigger.length) {
+                return;
+            }
+
+            trigger.on('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                var isOpen = menu.hasClass('is-open');
+                closeAllUserMenus();
+                if (!isOpen) {
+                    menu.addClass('is-open');
+                    trigger.attr('aria-expanded', 'true');
+                }
+            });
+        });
+
+        $(document).on('click.userMenu', function () {
+            closeAllUserMenus();
+        });
+
+        $(document).on('keydown.userMenu', function (event) {
+            if (event.key === 'Escape') {
+                closeAllUserMenus();
+            }
+        });
+
+        $('.js-user-menu .user-menu__dropdown').on('click', function (event) {
+            event.stopPropagation();
+        });
+    }
+
     function parseJsonPayload(container, key) {
         var cached = container.data(key);
         if (cached && typeof cached !== 'string') {
@@ -549,7 +593,22 @@ $(function () {
                         var teamIndex = toInteger(slotTeam && slotTeam.team, null);
                         var teamData = teamIndex !== null && teams[teamIndex] ? teams[teamIndex] : {};
                         var playerMeta = slotIndex === 0 ? statusMeta.player1 : statusMeta.player2;
-                        var name = playerMeta && playerMeta.name ? playerMeta.name : (teamData && teamData.name ? teamData.name : 'Team ' + (teamIndex + 1));
+                        var username = null;
+                        var profileUrl = null;
+                        var displayName = null;
+                        if (playerMeta && typeof playerMeta === 'object') {
+                            if (playerMeta.username) {
+                                username = playerMeta.username;
+                            }
+                            if (playerMeta.profile_url) {
+                                profileUrl = playerMeta.profile_url;
+                            }
+                            if (playerMeta.display_name) {
+                                displayName = playerMeta.display_name;
+                            }
+                        }
+                        var name = displayName
+                            || (playerMeta && playerMeta.name ? playerMeta.name : (teamData && teamData.name ? teamData.name : 'Team ' + (teamIndex + 1)));
                         var playerId = playerMeta && playerMeta.id ? toInteger(playerMeta.id, null) : null;
                         var statusLabel = computeStatusLabel(info, slotIndex, statusMeta);
                         var isSelectable = effectiveMode === 'admin' && matchId && playerId;
@@ -566,6 +625,8 @@ $(function () {
                             roundIndex: roundIndex,
                             matchIndex: matchIndex,
                             isChampion: isChampion,
+                            username: username,
+                            profileUrl: profileUrl,
                         });
                         if (teamIndex !== null) {
                             teamEl.attr('data-team-index', teamIndex);
@@ -653,9 +714,10 @@ $(function () {
             return menu;
         }
         menu = $('<div class="bracket-context-menu" role="menu" aria-hidden="true"></div>');
+        var profileBtn = $('<button type="button" class="bracket-context-menu__action" data-action="profile" role="menuitem">Player Profile</button>');
         var markBtn = $('<button type="button" class="bracket-context-menu__action" data-action="mark" role="menuitem"></button>');
         var cancelBtn = $('<button type="button" class="bracket-context-menu__action" data-action="cancel" role="menuitem">Cancel</button>');
-        menu.append(markBtn, cancelBtn);
+        menu.append(profileBtn, markBtn, cancelBtn);
         $('body').append(menu);
         container.data('contextMenu', menu);
         return menu;
@@ -724,6 +786,15 @@ $(function () {
         menu.attr('aria-hidden', 'false');
         var markBtn = menu.find('[data-action="mark"]');
         markBtn.text('Mark ' + payload.playerName + ' as winner');
+        var profileBtn = menu.find('[data-action="profile"]');
+        if (profileBtn.length) {
+            if (payload.profileUrl) {
+                profileBtn.show();
+                profileBtn.text('View ' + payload.playerName + ' profile');
+            } else {
+                profileBtn.hide();
+            }
+        }
 
         var x = null;
         var y = null;
@@ -761,6 +832,19 @@ $(function () {
             instanceId = 'menu-' + Math.random().toString(36).slice(2);
             container.data('contextMenuInstanceId', instanceId);
         }
+
+        menu.on('click', '[data-action="profile"]', function (event) {
+            event.preventDefault();
+            var payload = menu.data('payload');
+            if (!payload || !payload.profileUrl) {
+                return;
+            }
+            hideContextMenu(container);
+            var url = payload.profileUrl;
+            if (url) {
+                window.open(url, '_blank', 'noopener');
+            }
+        });
 
         menu.on('click', '[data-action="mark"]', function (event) {
             event.preventDefault();
@@ -898,6 +982,17 @@ $(function () {
 
         var playerName =
             $.trim(team.attr('data-player-name') || '') || $.trim(team.find('.label-text').text()) || 'this player';
+        var username = team.attr('data-player-username') || null;
+        if (username) {
+            username = $.trim(username);
+        }
+        var profileUrl = team.attr('data-profile-url') || null;
+        if (!profileUrl) {
+            var derived = username || (playerName && playerName !== 'this player' ? playerName : '');
+            if (derived && derived !== 'TBD' && derived !== 'BYE') {
+                profileUrl = '/?page=profile&user=' + encodeURIComponent(derived);
+            }
+        }
 
         if (roundIndex !== null && !team.attr('data-round-index')) {
             team.attr('data-round-index', roundIndex);
@@ -925,6 +1020,8 @@ $(function () {
             tournamentId: tournamentId,
             token: token,
             playerName: playerName,
+            playerUsername: username,
+            profileUrl: profileUrl,
             roundIndex: roundIndex,
             matchIndex: matchIndex,
             team: team,
@@ -1463,6 +1560,19 @@ $(function () {
         if (options.playerId) {
             team.attr('data-player-id', options.playerId);
             team.attr('data-player-name', options.playerName || options.name || '');
+        }
+
+        if (options.username) {
+            team.attr('data-player-username', options.username);
+        }
+
+        if (options.profileUrl) {
+            team.attr('data-profile-url', options.profileUrl);
+        } else {
+            var derivedName = options.username || options.playerName || options.name || '';
+            if (derivedName && derivedName !== 'TBD' && derivedName !== 'BYE') {
+                team.attr('data-profile-url', '/?page=profile&user=' + encodeURIComponent(derivedName));
+            }
         }
 
         var statusLabel = options.statusLabel;
@@ -2154,7 +2264,21 @@ $(function () {
 
                     [0, 1].forEach(function (slotIndex) {
                         var playerMeta = slotIndex === 0 ? meta.player1 : meta.player2;
-                        var name = playerMeta && playerMeta.name ? playerMeta.name : 'TBD';
+                        var username = null;
+                        var profileUrl = null;
+                        var displayName = null;
+                        if (playerMeta && typeof playerMeta === 'object') {
+                            if (playerMeta.username) {
+                                username = playerMeta.username;
+                            }
+                            if (playerMeta.profile_url) {
+                                profileUrl = playerMeta.profile_url;
+                            }
+                            if (playerMeta.display_name) {
+                                displayName = playerMeta.display_name;
+                            }
+                        }
+                        var name = displayName || (playerMeta && playerMeta.name ? playerMeta.name : 'TBD');
                         var playerId = null;
                         if (playerMeta && playerMeta.id) {
                             playerId = parseInt(playerMeta.id, 10);
@@ -2182,6 +2306,8 @@ $(function () {
                             matchIndex: matchIndex,
                             isChampion: isChampion,
                             source: sourceMeta,
+                            username: username,
+                            profileUrl: profileUrl,
                         });
                         matchEl.append(team);
                     });
@@ -2469,15 +2595,33 @@ $(function () {
             return;
         }
         roster.forEach(function (player) {
-            var name = '';
+            var rawName = '';
             if (player && typeof player.name === 'string' && player.name.trim() !== '') {
-                name = player.name.trim();
+                rawName = player.name.trim();
             } else if (player && player.id) {
-                name = 'Player #' + player.id;
+                rawName = 'Player #' + player.id;
             } else {
-                name = 'Player';
+                rawName = 'Player';
             }
-            rosterList.append($('<li></li>').text(name));
+            var displayName = rawName;
+            if (player && typeof player.display_name === 'string' && player.display_name.trim() !== '') {
+                displayName = player.display_name.trim();
+            }
+            var username = player && player.username ? player.username : null;
+            var profileUrl = player && player.profile_url ? player.profile_url : null;
+            if (!profileUrl && username) {
+                profileUrl = '/?page=profile&user=' + encodeURIComponent(username);
+            }
+            var item = $('<li></li>');
+            if (profileUrl) {
+                var link = $('<a class="user-link"></a>')
+                    .attr('href', profileUrl)
+                    .text(displayName);
+                item.append(link);
+            } else {
+                item.text(displayName);
+            }
+            rosterList.append(item);
         });
     }
 
@@ -3358,4 +3502,6 @@ $(function () {
     $('#tournamentSettingsModal').on('change', '[data-player-list] input[type="checkbox"]', function () {
         renderSelectedPlayers($('#tournamentSettingsModal'));
     });
+
+    initUserMenu();
 });
