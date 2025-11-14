@@ -51,20 +51,63 @@ function stats_decode_match_meta($meta): array
     return [];
 }
 
+function stats_lookup_user_id_by_name(string $name): ?int
+{
+    static $cache = [];
+
+    $normalized = strtolower(trim($name));
+    if ($normalized === '' || $normalized === 'bye' || $normalized === 'tbd') {
+        return null;
+    }
+
+    if (array_key_exists($normalized, $cache)) {
+        return $cache[$normalized];
+    }
+
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare('SELECT id FROM users WHERE username = :username LIMIT 1');
+        $stmt->execute([':username' => $name]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(:username) LIMIT 1');
+            $stmt->execute([':username' => $name]);
+            $row = $stmt->fetch();
+        }
+
+        $cache[$normalized] = $row ? (int)$row['id'] : null;
+    } catch (Throwable $e) {
+        error_log('Failed to lookup user id for stats: ' . $e->getMessage());
+        $cache[$normalized] = null;
+    }
+
+    return $cache[$normalized];
+}
+
 function stats_meta_player_id(?array $meta): ?int
 {
     if (!$meta) {
         return null;
     }
 
-    if (isset($meta['id']) && is_numeric($meta['id'])) {
-        $id = (int)$meta['id'];
-        return $id > 0 ? $id : null;
+    foreach (['id', 'user_id', 'player_id'] as $key) {
+        if (isset($meta[$key]) && is_numeric($meta[$key])) {
+            $id = (int)$meta[$key];
+            if ($id > 0) {
+                return $id;
+            }
+        }
     }
 
-    if (isset($meta['player_id']) && is_numeric($meta['player_id'])) {
-        $id = (int)$meta['player_id'];
-        return $id > 0 ? $id : null;
+    $nameKeys = ['username', 'name'];
+    foreach ($nameKeys as $nameKey) {
+        if (!empty($meta[$nameKey]) && is_string($meta[$nameKey])) {
+            $resolved = stats_lookup_user_id_by_name($meta[$nameKey]);
+            if ($resolved) {
+                return $resolved;
+            }
+        }
     }
 
     return null;
@@ -216,9 +259,8 @@ function calculate_user_stat_snapshot(int $userId): ?array
 
             $winnerId = isset($match['winner_user_id']) ? (int)$match['winner_user_id'] : null;
             if ($winnerId === null && isset($meta['winner']) && is_array($meta['winner'])) {
-                if (isset($meta['winner']['id']) && is_numeric($meta['winner']['id'])) {
-                    $winnerId = (int)$meta['winner']['id'];
-                } elseif (isset($meta['winner']['slot'])) {
+                $winnerId = stats_meta_player_id($meta['winner']);
+                if ($winnerId === null && isset($meta['winner']['slot'])) {
                     $slot = (int)$meta['winner']['slot'];
                     if ($slot === 1 && $player1Id > 0) {
                         $winnerId = $player1Id;
