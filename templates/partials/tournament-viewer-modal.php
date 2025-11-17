@@ -95,6 +95,17 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                             <input type="hidden" name="tournament_id" value="" class="js-settings-tournament-id">
                             <button type="submit" class="btn subtle">Complete tournament</button>
                         </form>
+                        <form
+                            method="post"
+                            action="/api/tournaments.php"
+                            class="tournament-settings__action-form"
+                            onsubmit="return confirm('Delete this tournament? This cannot be undone.');"
+                        >
+                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="tournament_id" value="" class="js-settings-tournament-id">
+                            <button type="submit" class="btn danger">Delete tournament</button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -173,6 +184,16 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                     <input type="hidden" name="action" value="complete">
                     <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
                     <button type="submit" class="btn subtle">Complete tournament</button>
+                </form>
+                <form
+                    method="post"
+                    action="/api/tournaments.php"
+                    onsubmit="return confirm('Delete this tournament? This cannot be undone.');"
+                >
+                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
+                    <button type="submit" class="btn danger">Delete tournament</button>
                 </form>
             </div>
         </div>
