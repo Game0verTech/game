@@ -32,10 +32,6 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
             <div class="tournament-viewer__description js-viewer-description" hidden></div>
             <div class="tournament-viewer__registration js-viewer-registration" aria-live="polite"></div>
             <div class="tournament-viewer__grid">
-                <section class="tournament-viewer__section">
-                    <h3>Registered Players</h3>
-                    <ul class="player-roster js-viewer-roster"></ul>
-                </section>
                 <section class="tournament-viewer__section tournament-viewer__section--bracket">
                     <?php if ($canManageTournamentsInViewer): ?>
                         <div class="tournament-viewer__actions">
@@ -53,6 +49,10 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                         data-refresh-interval="3000"
                         hidden
                     ></div>
+                </section>
+                <section class="tournament-viewer__section tournament-viewer__section--roster">
+                    <h3>Registered Players</h3>
+                    <ul class="player-roster js-viewer-roster"></ul>
                 </section>
             </div>
         </div>

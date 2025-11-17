@@ -1190,8 +1190,8 @@ body.modal-open {
 }
 
 .modal--fullscreen {
-    width: min(96vw, 1400px);
-    height: min(96vh, 940px);
+    width: min(98vw, 1580px);
+    height: min(98vh, 1080px);
     max-height: none;
     display: flex;
     flex-direction: column;
@@ -1247,14 +1247,14 @@ body.modal-open {
 
 .tournament-viewer__grid {
     display: grid;
-    grid-template-columns: minmax(220px, 280px) 1fr;
-    gap: clamp(18px, 4vw, 32px);
+    grid-template-columns: 1fr;
+    gap: clamp(18px, 3vw, 28px);
     align-items: start;
 }
 
 .tournament-viewer__actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-bottom: 12px;
 }
 
@@ -1281,11 +1281,12 @@ body.modal-open {
     display: none;
 }
 
-.player-roster {
+.tournament-viewer__section--roster .player-roster {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 10px;
 }
 
@@ -2207,7 +2208,7 @@ button.danger:focus-visible,
 .bracket-zoom-controls {
     position: absolute;
     top: clamp(16px, 2vw, 24px);
-    right: clamp(16px, 2vw, 24px);
+    left: clamp(16px, 2vw, 24px);
     display: flex;
     gap: 10px;
     padding: 6px;
