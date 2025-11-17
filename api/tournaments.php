@@ -190,6 +190,33 @@ switch ($action) {
         flash('success', $message);
         redirect('/?page=admin&t=view&id=' . $id);
 
+    case 'delete':
+        require_role('admin', 'manager');
+        $id = (int)($_POST['tournament_id'] ?? 0);
+        $tournament = get_tournament($id);
+        if (!$tournament) {
+            $message = 'Tournament not found.';
+            respond_tournament_error($message, 404);
+            flash('error', $message);
+            redirect('/?page=calendar');
+        }
+        if (!delete_tournament($id)) {
+            $message = 'Unable to delete tournament.';
+            respond_tournament_error($message, 500);
+            flash('error', $message);
+            redirect('/?page=calendar');
+        }
+        $message = 'Tournament deleted.';
+        if (is_ajax_request()) {
+            json_response([
+                'status' => 'success',
+                'message' => $message,
+                'tournament_id' => $id,
+            ]);
+        }
+        flash('success', $message);
+        redirect('/?page=calendar');
+
     case 'add_player_admin':
         require_role('admin', 'manager');
         $tournamentId = (int)($_POST['tournament_id'] ?? 0);

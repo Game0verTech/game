@@ -234,6 +234,17 @@ function refresh_tournament_bracket_snapshot(int $tournamentId): void
     touch_tournament($tournamentId);
 }
 
+function delete_tournament(int $id): bool
+{
+    try {
+        $stmt = db()->prepare('DELETE FROM tournaments WHERE id = :id');
+        return $stmt->execute([':id' => $id]);
+    } catch (Throwable $e) {
+        error_log('Failed to delete tournament: ' . $e->getMessage());
+        return false;
+    }
+}
+
 function normalize_tournament_schedule_input(?string $date, ?string $time): ?string
 {
     $date = trim((string)($date ?? ''));

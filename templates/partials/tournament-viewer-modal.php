@@ -32,10 +32,6 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
             <div class="tournament-viewer__description js-viewer-description" hidden></div>
             <div class="tournament-viewer__registration js-viewer-registration" aria-live="polite"></div>
             <div class="tournament-viewer__grid">
-                <section class="tournament-viewer__section">
-                    <h3>Registered Players</h3>
-                    <ul class="player-roster js-viewer-roster"></ul>
-                </section>
                 <section class="tournament-viewer__section tournament-viewer__section--bracket">
                     <?php if ($canManageTournamentsInViewer): ?>
                         <div class="tournament-viewer__actions">
@@ -53,6 +49,10 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                         data-refresh-interval="3000"
                         hidden
                     ></div>
+                </section>
+                <section class="tournament-viewer__section tournament-viewer__section--roster">
+                    <h3>Registered Players</h3>
+                    <ul class="player-roster js-viewer-roster"></ul>
                 </section>
             </div>
         </div>
@@ -94,6 +94,17 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                             <input type="hidden" name="action" value="complete">
                             <input type="hidden" name="tournament_id" value="" class="js-settings-tournament-id">
                             <button type="submit" class="btn subtle">Complete tournament</button>
+                        </form>
+                        <form
+                            method="post"
+                            action="/api/tournaments.php"
+                            class="tournament-settings__action-form"
+                            onsubmit="return confirm('Delete this tournament? This cannot be undone.');"
+                        >
+                            <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="tournament_id" value="" class="js-settings-tournament-id">
+                            <button type="submit" class="btn danger">Delete tournament</button>
                         </form>
                     </div>
                 </div>
@@ -173,6 +184,16 @@ $allPlayersJson = $canManageTournamentsInViewer ? safe_json_encode($allPlayersFo
                     <input type="hidden" name="action" value="complete">
                     <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
                     <button type="submit" class="btn subtle">Complete tournament</button>
+                </form>
+                <form
+                    method="post"
+                    action="/api/tournaments.php"
+                    onsubmit="return confirm('Delete this tournament? This cannot be undone.');"
+                >
+                    <input type="hidden" name="_token" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="tournament_id" value="" class="js-action-tournament-id">
+                    <button type="submit" class="btn danger">Delete tournament</button>
                 </form>
             </div>
         </div>
